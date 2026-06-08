@@ -46,7 +46,7 @@ ZHIPUAI_MODEL=glm-4.5
 LLM_MODE=zhipu
 ```
 
-没有 key 时系统使用 mock writer/editor 跑通完整管道。
+填写 `ZHIPUAI_API_KEY` 后系统会自动调用智谱；只有显式设置 `LLM_MODE=mock` 时才使用本地测试 writer。
 
 ## 测试
 

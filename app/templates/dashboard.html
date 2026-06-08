@@ -5,8 +5,14 @@
     <p class="eyebrow">Long-form Webnovel Architecture</p>
     <h1>长篇小说生产工作台</h1>
   </div>
-  <form method="post" action="/books/init-demo">
-    <button type="submit">初始化演示书</button>
+</section>
+
+<section class="panel">
+  <h2>新建正式作品</h2>
+  <form class="form-grid" method="post" action="/books/create">
+    <label>书名<input name="title" required placeholder="例如：废校词条师"></label>
+    <label>核心卖点<textarea name="premise" rows="3" placeholder="一句话写清主角、能力、压迫、代价、爽点方向"></textarea></label>
+    <button type="submit">创建作品并生成基础架构</button>
   </form>
 </section>
 
@@ -35,8 +41,7 @@
 {% else %}
 <section class="panel empty">
   <h2>还没有书</h2>
-  <p>点击右上角初始化演示书，系统会创建全书、卷、单元和前三章细纲。</p>
+  <p>创建正式作品后，系统会生成全书、卷、单元和前三章细纲，你可以继续在书籍页修改文风、大纲和章节控制。</p>
 </section>
 {% endif %}
 {% endblock %}
-

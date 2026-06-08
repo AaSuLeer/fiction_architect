@@ -45,6 +45,8 @@ class Settings:
 
 def get_settings() -> Settings:
     load_env()
+    zhipu_api_key = os.getenv("ZHIPUAI_API_KEY", "")
+    llm_mode = os.getenv("LLM_MODE", "zhipu" if zhipu_api_key else "mock").lower()
     sqlite_value = os.getenv("SQLITE_PATH", "").strip()
     if sqlite_value:
         sqlite_path = Path(sqlite_value)
@@ -60,11 +62,11 @@ def get_settings() -> Settings:
         mysql_user=os.getenv("MYSQL_USER", ""),
         mysql_password=os.getenv("MYSQL_PASSWORD", ""),
         mysql_database=os.getenv("MYSQL_DATABASE", "fiction_architect"),
-        zhipu_api_key=os.getenv("ZHIPUAI_API_KEY", ""),
+        zhipu_api_key=zhipu_api_key,
         zhipu_base_url=os.getenv("ZHIPUAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
         zhipu_model=os.getenv("ZHIPUAI_MODEL", "glm-4.5"),
         zhipu_timeout=int(os.getenv("ZHIPUAI_TIMEOUT", "60")),
-        llm_mode=os.getenv("LLM_MODE", "mock").lower(),
+        llm_mode=llm_mode,
         app_host=os.getenv("APP_HOST", "127.0.0.1"),
         app_port=int(os.getenv("APP_PORT", "8010")),
     )

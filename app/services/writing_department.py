@@ -23,8 +23,8 @@ class WritingDepartment:
         prompt = (
             "请根据 author_brief 和 continuity ref_pack 写一章正文。\n"
             "章节正文必须有当场压力、主角行动、对手反应、小兑现和未解代价。\n"
+            "必须尽量满足 author_brief 中的 target_chars_min 和 target_chars_max。\n"
             f"author_brief:\n{brief.content}\n\nref_pack:\n{ref_pack.content}\n\n只输出章节正文。"
         )
         body = self.llm.complete(system, prompt)
         return self.repo.create_artifact(book_id, chapter_no, "draft", "drafted", body, visibility="draft")
-

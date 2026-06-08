@@ -2,7 +2,14 @@
 {% block content %}
 <section class="head">
   <h1>书库</h1>
-  <form method="post" action="/books/init-demo"><button type="submit">初始化演示书</button></form>
+</section>
+<section class="panel">
+  <h2>新建正式作品</h2>
+  <form class="form-grid" method="post" action="/books/create">
+    <label>书名<input name="title" required></label>
+    <label>核心卖点<textarea name="premise" rows="3"></textarea></label>
+    <button type="submit">创建</button>
+  </form>
 </section>
 <section class="panel">
   {% for book in books %}
@@ -15,4 +22,3 @@
   {% endfor %}
 </section>
 {% endblock %}
-

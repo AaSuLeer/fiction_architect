@@ -4,19 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>fiction_architect</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.ico">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="/">fiction_architect</a>
+    <a class="brand" href="/">
+      <img class="brand-icon" src="/static/icons/favicon.svg" alt="" aria-hidden="true">
+      <span>fiction_architect</span>
+    </a>
     <nav>
       <a href="/">工作台</a>
       <a href="/books">书库</a>
     </nav>
   </aside>
   <main class="main">
+    <button class="back-button" type="button" onclick="history.length > 1 ? history.back() : location.href='/'">返回</button>
     {% block content %}{% endblock %}
   </main>
 </body>
 </html>
-

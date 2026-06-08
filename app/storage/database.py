@@ -65,6 +65,20 @@ SCHEMA_TABLES = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS production_settings (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        market_channel VARCHAR(100) NOT NULL DEFAULT '男频爽文',
+        target_chars_min INTEGER NOT NULL DEFAULT 1800,
+        target_chars_max INTEGER NOT NULL DEFAULT 2600,
+        chapter_unit_size INTEGER NOT NULL DEFAULT 3,
+        hook_policy TEXT NOT NULL,
+        pacing_policy TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (book_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS characters (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         book_id INTEGER NOT NULL,

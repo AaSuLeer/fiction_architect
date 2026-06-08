@@ -12,7 +12,31 @@
 </section>
 
 <section class="panel">
-  <h2>长篇门禁</h2>
+  <h2>章节细纲与长篇门禁</h2>
+  <form class="form-grid" method="post" action="/books/{{ plan.book_id }}/chapters/{{ plan.chapter_no }}/plan">
+    <label>章节标题<input name="title" value="{{ plan.title }}"></label>
+    <label>章节目标<textarea name="objective" rows="3">{{ plan.objective }}</textarea></label>
+    <label>允许揭露<textarea name="allowed_reveals" rows="3">{{ plan.allowed_reveals }}</textarea></label>
+    <label>禁止揭露<textarea name="forbidden_reveals" rows="3">{{ plan.forbidden_reveals }}</textarea></label>
+    <label>推进限制<textarea name="pace_limit" rows="3">{{ plan.pace_limit }}</textarea></label>
+    <button type="submit">保存章节细纲</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>文风、大纲与字数目标</h2>
+  <div class="kv">
+    <span>市场频道</span><strong>{{ controls.settings.market_channel }}</strong>
+    <span>目标字数</span><strong>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</strong>
+    <span>文风规则</span><strong>{{ controls.style.rules }}</strong>
+    <span>卷目标</span><strong>{{ controls.volume.goal }}</strong>
+    <span>单元目标</span><strong>{{ controls.arc.goal }}</strong>
+    <span>压力轮换</span><strong>{{ controls.arc.pressure }}</strong>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>当前门禁摘要</h2>
   <div class="kv">
     <span>允许揭露</span><strong>{{ plan.allowed_reveals }}</strong>
     <span>禁止揭露</span><strong>{{ plan.forbidden_reveals }}</strong>
@@ -46,4 +70,3 @@
   {% endif %}
 </section>
 {% endblock %}
-
