@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}归档 - fiction_architect{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">归档</p>
+  <h1>已归档作品</h1>
+  <p class="muted">这里不再显示 sample；演示书会在数据库初始化时清除。</p>
+</section>
+<section class="bookshelf compact">
+  {% for book in books %}
+  <article class="panel archive-card">
+    <h2>{{ book.title }}</h2>
+    <p>{{ book.premise }}</p>
+    <form method="post" action="/books/{{ book.id }}/restore"><button type="submit">恢复</button></form>
+    <form method="post" action="/books/{{ book.id }}/delete">
+      <input name="confirm" placeholder="输入 DELETE 永久删除">
+      <button type="submit">永久删除</button>
+    </form>
+  </article>
+  {% else %}
+  <div class="empty-state"><p>没有归档作品。</p></div>
+  {% endfor %}
+</section>
+{% endblock %}

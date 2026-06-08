@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}正文/导出 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head split-head">
+  <div>
+    <p class="eyebrow">正文与导出</p>
+    <h1>{{ book.title }}</h1>
+    <p class="muted">编辑通过后进入待人工确认。只有人工确认并导出后的版本，才会写回连续性工作室。</p>
+  </div>
+  <a class="primary-action" href="/books/{{ book.id }}/chapter-batches/new">新建章节</a>
+</section>
+
+<section class="two-col">
+  <div class="panel">
+    <h2>章节正文</h2>
+    {% for plan in plans %}
+    {% set body = bodies.get(plan.chapter_no) %}
+    <a class="list-row" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
+      <span>第 {{ plan.chapter_no }} 章：{{ plan.title }}</span>
+      <strong>{{ body.status if body else "未生成" }}</strong>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <h2>导出 DOCX</h2>
+    <p class="muted">导出会把所有“人工确认正文”写入 DOCX，并以导出版本生成连续性记忆候选。</p>
+    <form method="post" action="/books/{{ book.id }}/exports/docx">
+      <button class="primary-action" type="submit">导出并写回连续性</button>
+    </form>
+    <h3>导出记录</h3>
+    {% if exports %}
+      {% for export in exports %}
+      <a class="list-row" href="/exports/{{ export.id }}/download">
+        <span>{{ export.export_type }} #{{ export.id }}</span>
+        <small>{{ export.status }}</small>
+      </a>
+      {% endfor %}
+    {% else %}
+      <p class="muted">暂无导出。</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

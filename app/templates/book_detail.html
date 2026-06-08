@@ -1,73 +1,69 @@
 {% extends "base.html" %}
+{% block title %}{{ book.title }} - fiction_architect{% endblock %}
 {% block content %}
-<section class="head">
-  <div>
-    <p class="eyebrow">Book Architecture</p>
+<section class="book-workbench">
+  <div class="workbench-cover">
+    {% if record.cover_path %}
+    <img src="{{ record.cover_path }}" alt="{{ book.title }}">
+    {% else %}
+    <span>{{ book.title[:2] }}</span>
+    {% endif %}
+  </div>
+  <div class="workbench-main">
+    <p class="eyebrow">单书工作台</p>
     <h1>{{ book.title }}</h1>
     <p>{{ book.premise }}</p>
+    <div class="stat-row">
+      <span>当前章节规划：{{ plans|length }} 章</span>
+      <span>已生成正文：{{ bodies|length }} 章</span>
+      <span>导出记录：{{ exports|length }} 次</span>
+    </div>
+    <form class="inline-form" method="post" action="/books/{{ book.id }}/cover" enctype="multipart/form-data">
+      <input type="file" name="cover" accept="image/*">
+      <button type="submit">上传封面</button>
+    </form>
   </div>
 </section>
 
-<section class="panel">
-  <h2>作品信息</h2>
-  <form class="form-grid" method="post" action="/books/{{ book.id }}/update">
-    <label>书名<input name="title" value="{{ book.title }}" required></label>
-    <label>核心卖点<textarea name="premise" rows="3">{{ book.premise }}</textarea></label>
-    <button type="submit">保存作品信息</button>
-  </form>
+<section class="menu-grid">
+  {% for item in menu %}
+  <a class="menu-card" href="{{ item.href }}">
+    <h2>{{ item.label }}</h2>
+    <p>{{ item.hint }}</p>
+  </a>
+  {% endfor %}
 </section>
 
-<section class="panel">
-  <h2>文风与生产控制</h2>
-  <form class="form-grid" method="post" action="/books/{{ book.id }}/controls">
-    <label>市场频道<input name="market_channel" value="{{ controls.settings.market_channel }}"></label>
-    <label>最低字数<input type="number" name="target_chars_min" value="{{ controls.settings.target_chars_min }}"></label>
-    <label>最高字数<input type="number" name="target_chars_max" value="{{ controls.settings.target_chars_max }}"></label>
-    <label>单元章节数<input type="number" name="chapter_unit_size" value="{{ controls.settings.chapter_unit_size }}"></label>
-    <label>人称策略
-      <select name="pov_policy">
-        <option value="third_limited" {% if controls.settings.pov_policy == "third_limited" %}selected{% endif %}>第三人称有限视角</option>
-        <option value="first_person" {% if controls.settings.pov_policy == "first_person" %}selected{% endif %}>第一人称主角视角</option>
-        <option value="third_omniscient" {% if controls.settings.pov_policy == "third_omniscient" %}selected{% endif %}>第三人称全知视角</option>
-      </select>
-    </label>
-    <label>文风规则<textarea name="style_rules" rows="5">{{ controls.style.rules }}</textarea></label>
-    <label>钩子/爽点规则<textarea name="hook_policy" rows="3">{{ controls.settings.hook_policy }}</textarea></label>
-    <label>推进节奏规则<textarea name="pacing_policy" rows="3">{{ controls.settings.pacing_policy }}</textarea></label>
-    <button type="submit">保存文风与生产控制</button>
-  </form>
-</section>
-
-<section class="panel">
-  <h2>大纲与单元细纲</h2>
-  <form class="form-grid" method="post" action="/books/{{ book.id }}/architecture">
-    <label>卷名<input name="volume_title" value="{{ controls.volume.title }}"></label>
-    <label>卷目标<textarea name="volume_goal" rows="3">{{ controls.volume.goal }}</textarea></label>
-    <label>单元名<input name="arc_title" value="{{ controls.arc.title }}"></label>
-    <label>单元目标<textarea name="arc_goal" rows="3">{{ controls.arc.goal }}</textarea></label>
-    <label>压力轮换<textarea name="arc_pressure" rows="3">{{ controls.arc.pressure }}</textarea></label>
-    <button type="submit">保存大纲</button>
-  </form>
-</section>
-
-<section class="panel">
-  <h2>章节细纲</h2>
-  <div class="grid">
-    {% for plan in plans %}
-    <a class="chapter-card" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
-      <strong>第{{ plan.chapter_no }}章 {{ plan.title }}</strong>
-      <span>{{ plan.objective }}</span>
-      <em>{{ plan.pace_limit }}</em>
-    </a>
-    {% endfor %}
+<section class="two-col">
+  <div class="panel">
+    <h2>最近批次</h2>
+    {% if batches %}
+      {% for batch in batches[:5] %}
+      <a class="list-row" href="/books/{{ book.id }}/chapter-batches/{{ batch.id }}">
+        <span>第 {{ batch.start_chapter }}-{{ batch.end_chapter }} 章</span>
+        <strong>{{ batch.status }}</strong>
+      </a>
+      {% endfor %}
+    {% else %}
+      <p class="muted">还没有章节批次。</p>
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h2>生产记录</h2>
+    {% if events %}
+      {% for event in events[:8] %}
+      <div class="event-row">
+        <strong>{{ event.event_type }}</strong>
+        <span>{{ event.message }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">暂无记录。</p>
+    {% endif %}
   </div>
 </section>
-<section class="panel">
-  <h2>最近事件</h2>
-  <table>
-    {% for event in events %}
-    <tr><td>{{ event.created_at }}</td><td>{{ event.event_type }}</td><td>{{ event.message }}</td></tr>
-    {% endfor %}
-  </table>
-</section>
+
+<form method="post" action="/books/{{ book.id }}/archive" class="danger-zone">
+  <button type="submit">归档这本书</button>
+</form>
 {% endblock %}

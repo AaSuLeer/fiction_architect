@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}开书设定 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">开书设定</p>
+  <h1>{{ book.title }}</h1>
+  {% if created %}<p class="notice">基础设定已生成。请人工确认后再继续新建章节。</p>{% endif %}
+</section>
+
+<form class="panel wide-form" method="post" action="/books/{{ book.id }}/setup">
+  <div class="form-grid">
+    <label>书名<input name="title" value="{{ record.title }}" required></label>
+    <label>题材<input name="genre" value="{{ record.genre or '' }}"></label>
+    <label>频道/平台<input name="market_channel" value="{{ record.market_channel or '' }}"></label>
+    <label>目标读者<input name="target_reader" value="{{ record.target_reader or '' }}"></label>
+    <label>人称策略
+      <select name="pov_policy">
+        {% for value, label in pov_labels.items() %}
+        <option value="{{ value }}" {% if record.pov_policy == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>单章最低字数<input type="number" name="target_chars_min" value="{{ record.target_chars_min or 2200 }}"></label>
+    <label>单章最高字数<input type="number" name="target_chars_max" value="{{ record.target_chars_max or 3200 }}"></label>
+    <label>核心卖点<input name="premise" value="{{ record.premise or '' }}"></label>
+  </div>
+  <label>全书主线<textarea name="story_mainline" rows="5">{{ record.story_mainline or '' }}</textarea></label>
+  <label>世界观设定<textarea name="worldbuilding" rows="6">{{ record.worldbuilding or '' }}</textarea></label>
+  <label>导入大纲<textarea name="imported_outline" rows="7">{{ record.imported_outline or '' }}</textarea></label>
+  <div class="form-actions">
+    <button class="primary-action" type="submit">保存开书设定</button>
+  </div>
+</form>
+{% endblock %}

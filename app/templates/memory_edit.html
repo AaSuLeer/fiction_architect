@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}编辑记忆 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">记忆版本</p>
+  <h1>{{ memory.memory_type }} · v{{ memory.version }}</h1>
+  <p class="muted">保存会新增一个版本，不覆盖旧版本，便于回滚和审计。</p>
+</section>
+<form class="panel wide-form" method="post" action="/books/{{ book.id }}/continuity/memories/{{ memory.id }}/edit">
+  <label>记忆内容<textarea name="content" rows="24">{{ memory.content }}</textarea></label>
+  <button class="primary-action" type="submit">保存为新版本</button>
+</form>
+{% endblock %}

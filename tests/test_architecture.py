@@ -15,7 +15,7 @@ class IsolatedEnv:
     def __init__(self):
         self.original = os.environ.copy()
         self.tmp = tempfile.TemporaryDirectory()
-        self.db_path = Path(self.tmp.name) / "fiction_architect_test.db"
+        self.db_path = Path(self.tmp.name) / "architecture.db"
 
     def __enter__(self):
         os.environ.clear()
@@ -32,88 +32,58 @@ class IsolatedEnv:
 
 
 class ArchitectureTests(unittest.TestCase):
-    def runtime(self):
+    def repo(self) -> Repository:
         settings = get_settings()
         db = Database(settings)
         initialize_database(db)
-        repo = Repository(db)
-        return repo
+        return Repository(db)
 
-    def test_sqlite_demo_initializes_four_layer_architecture(self):
+    def test_formal_book_initializes_four_layer_architecture(self):
         with IsolatedEnv():
-            repo = self.runtime()
-            book_id = repo.create_demo_book()
+            repo = self.repo()
+            book_id = repo.create_book("架构测试书", "主角在规则压迫下反击", story_mainline="三章完成一次小闭环")
             plans = repo.list_chapter_plans(book_id)
-            self.assertEqual(3, len(plans))
             self.assertEqual([1, 2, 3], [plan.chapter_no for plan in plans])
             ctx = repo.get_architecture_context(book_id, 1)
-            self.assertEqual("第一卷：废校开门", ctx["volume"]["title"])
-            self.assertEqual("入学验词", ctx["arc"]["title"])
-            self.assertIn("不能解释完整世界观", plans[2].forbidden_reveals)
+            self.assertIn("第一卷", ctx["volume"]["title"])
+            self.assertIn("前三章", ctx["arc"]["title"])
+            self.assertEqual(ctx["arc"]["id"], repo.get_architecture_context(book_id, 3)["arc"]["id"])
 
-    def test_pipeline_approves_clean_mock_and_writes_body(self):
+    def test_pipeline_editor_approval_does_not_write_continuity_before_export(self):
         with IsolatedEnv():
             repo, pipe = build_runtime()
-            book_id = repo.create_demo_book()
-            result = pipe.run_chapter(book_id, 1)
+            book_id = repo.create_book("生成测试书", "主角夺回解释权", target_chars_min=900, target_chars_max=1800)
+            result = pipe.generate_chapter(book_id, 1)
             self.assertEqual("approved", result["status"])
             body = repo.get_chapter_body(book_id, 1)
-            self.assertIsNotNone(body)
-            patch = repo.latest_artifact(book_id, 1, "continuity_patch")
-            self.assertIsNotNone(patch)
-            self.assertEqual("candidate", patch.status)
+            self.assertEqual("editor_approved", body["status"])
+            self.assertIsNone(repo.latest_memory(book_id, "chapter_memory", "chapter:1"))
+
+    def test_exported_body_writes_memory_and_atom_candidates(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_book("导出记忆书", "主角用证据反击", target_chars_min=50, target_chars_max=5000)
+            text = "起因是公开压迫。经过是主角找到证据并反击。结果是对手退让，但留下新的代价。" * 20
+            repo.save_chapter_body(book_id, 1, "第一章：反击", text, "human_confirmed")
+            record = repo.create_export_record(book_id, "docx", "dummy.docx")
+            repo.mark_exported(book_id, int(record["id"]))
+            pipe.continuity.writeback_from_export(book_id, int(record["id"]))
+            self.assertIsNotNone(repo.latest_memory(book_id, "chapter_memory", "chapter:1"))
+            self.assertEqual(1, len(repo.list_atoms(book_id, status="candidate", chapter_no=1)))
 
     def test_contaminated_body_is_rejected(self):
-        guard = TextGuard()
-        result = guard.check_body("本章交付会比上一章更稳，根据规则由连续性工作室推进。")
+        result = TextGuard().check_body("交付说明：根据规则，本章由连续性工作室处理，审稿通过后比上一章更稳。")
         self.assertFalse(result.passed)
         self.assertGreaterEqual(len(result.problems), 3)
-
-    def test_unapproved_draft_cannot_writeback(self):
-        with IsolatedEnv():
-            repo, pipe = build_runtime()
-            book_id = repo.create_demo_book()
-            draft = repo.create_artifact(book_id, 1, "draft", "drafted", "普通草稿。普通草稿。普通草稿。普通草稿。普通草稿。普通草稿。")
-            with self.assertRaises(ValueError):
-                pipe.continuity.writeback(book_id, 1, draft.id)
-
-    def test_editor_rejects_short_draft(self):
-        with IsolatedEnv():
-            repo, pipe = build_runtime()
-            book_id = repo.create_demo_book()
-            draft = repo.create_artifact(book_id, 1, "draft", "drafted", "林砚站在台前。倒计时只剩三十息。他伸手改了一个字，赢下资格，也欠下代价。")
-            review = pipe.editorial.review(book_id, 1, draft.id)
-            self.assertEqual("rejected", review.status)
-            self.assertIn("字数不达标", review.content)
 
     def test_first_person_policy_is_configurable(self):
         with IsolatedEnv():
             repo, pipe = build_runtime()
-            book_id = repo.create_demo_book()
-            controls = repo.get_book_controls(book_id)
-            repo.update_style_and_settings(
-                book_id,
-                controls["style"]["rules"],
-                controls["settings"]["market_channel"],
-                50,
-                5000,
-                controls["settings"]["chapter_unit_size"],
-                "first_person",
-                controls["settings"]["hook_policy"],
-                controls["settings"]["pacing_policy"],
-            )
-            sample = "我站在验词台前，倒计时只剩三十息。\n\n我伸手按住名册，先试探红印，再反问考官。\n\n最后我赢下临时资格，也欠下三日后的代价。"
+            book_id = repo.create_book("第一人称书", "我从失败里反击", pov_policy="first_person", target_chars_min=20, target_chars_max=5000)
+            sample = "我站在验词台前，倒计时只剩三十息。起因是对手逼我退场。经过是我按住名册反问考官。结果是我赢下临时资格，也欠下三日后的代价。"
             draft = repo.create_artifact(book_id, 1, "draft", "drafted", sample)
             review = pipe.editorial.review(book_id, 1, draft.id)
             self.assertNotIn("人称错误", review.content)
-
-    def test_story_arc_limits_chapters_one_to_three(self):
-        with IsolatedEnv():
-            repo = self.runtime()
-            book_id = repo.create_demo_book()
-            contexts = [repo.get_architecture_context(book_id, chapter_no) for chapter_no in [1, 2, 3]]
-            self.assertEqual(1, len({ctx["arc"]["id"] for ctx in contexts}))
-            self.assertTrue(all("不能" in ctx["plan"]["pace_limit"] or "只" in ctx["plan"]["pace_limit"] for ctx in contexts))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}编辑设置 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">编辑设置</p>
+  <h1>{{ book.title }} 的专属审稿规则</h1>
+  <p class="muted">这里决定生成后如何自动审稿、重写和转入人工处理。</p>
+</section>
+
+<section class="panel">
+  <h2>从资源坞重新复制编辑</h2>
+  <form class="inline-form" method="post" action="/books/{{ book.id }}/editor/from-resource">
+    <select name="editor_profile_id">
+      {% for editor in editors %}
+      <option value="{{ editor.id }}">{{ editor.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">复制到本书</button>
+  </form>
+</section>
+
+{% set profile = controls.editor_profile or {} %}
+<form class="panel wide-form" method="post" action="/books/{{ book.id }}/editor">
+  <div class="form-grid">
+    <label>编辑名称<input name="name" value="{{ profile.name or '' }}"></label>
+    <label>平台/频道<input name="platform" value="{{ profile.platform or '' }}"></label>
+    <label>退稿阈值<input type="number" name="reject_threshold" value="{{ profile.reject_threshold or 1 }}" min="1"></label>
+  </div>
+  <label>字数规则<textarea name="word_count_rule" rows="4">{{ profile.word_count_rule or '' }}</textarea></label>
+  <label>人称规则<textarea name="pov_rule" rows="4">{{ profile.pov_rule or '' }}</textarea></label>
+  <label>结构规则<textarea name="structure_rule" rows="4">{{ profile.structure_rule or '' }}</textarea></label>
+  <label>爽点规则<textarea name="payoff_rule" rows="4">{{ profile.payoff_rule or '' }}</textarea></label>
+  <label>污染规则<textarea name="pollution_rule" rows="5">{{ profile.pollution_rule or '' }}</textarea></label>
+  <div class="form-actions">
+    <button class="primary-action" type="submit">保存本书编辑设置</button>
+  </div>
+</form>
+{% endblock %}

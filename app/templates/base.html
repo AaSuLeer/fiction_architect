@@ -3,28 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>fiction_architect</title>
+  <title>{% block title %}fiction_architect{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.ico">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-  <aside class="sidebar">
+  <header class="topbar">
     <a class="brand" href="/">
-      <img class="brand-icon" src="/static/icons/favicon.svg" alt="" aria-hidden="true">
+      <img class="brand-icon" src="/static/icons/favicon.svg" alt="">
       <span>fiction_architect</span>
     </a>
-    <nav>
-      <a href="/">工作台</a>
-      <a href="/books">书库</a>
-      <a href="/departments/continuity">连续性工作室</a>
-      <a href="/departments/author">作者部门</a>
-      <a href="/departments/writing">写作部门</a>
-      <a href="/departments/editorial">编辑部门</a>
-      <a href="/debug">调试台</a>
+    <nav class="topnav">
+      <a href="/">书架</a>
+      <a href="/resources/authors">作者资源坞</a>
+      <a href="/resources/editors">编辑资源坞</a>
+      <a href="/exports">DOCX 导出</a>
+      <a href="/archive">归档</a>
     </nav>
-  </aside>
+  </header>
   <main class="main">
-    {% if request.url.path != "/" %}
+    {% if request.url.path != "/" and request.url.path != "/books" %}
     <button class="back-button" type="button" onclick="history.length > 1 ? history.back() : location.href='/'">返回</button>
     {% endif %}
     {% block content %}{% endblock %}

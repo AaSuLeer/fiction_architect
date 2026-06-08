@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% block title %}提示 - fiction_architect{% endblock %}
 {% block content %}
-<section class="panel">
-  <h1>无法完成请求</h1>
+<section class="empty-state">
+  <h1>操作没有完成</h1>
   <p>{{ message }}</p>
+  <a class="primary-action" href="/">回到书架</a>
 </section>
 {% endblock %}
-

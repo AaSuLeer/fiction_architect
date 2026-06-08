@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{% if kind == "authors" %}作者资源坞{% else %}编辑资源坞{% endif %}{% endblock %}
+{% block content %}
+{% set is_author = kind == "authors" %}
+<section class="page-head split-head">
+  <div>
+    <p class="eyebrow">全局资源坞</p>
+    <h1>{{ "作者资源坞" if is_author else "编辑资源坞" }}</h1>
+    <p class="muted">这里保存可复用模板。一本书选择后会复制成单书配置，后续修改互不污染。</p>
+  </div>
+  <a class="secondary-action" href="/resources/{{ kind }}/export/json">导出 JSON</a>
+</section>
+
+<section class="two-col">
+  <div class="panel">
+    <h2>资源列表</h2>
+    {% for profile in profiles %}
+    <a class="list-row" href="/resources/{{ kind }}/{{ profile.id }}">
+      <span>{{ profile.name }}</span>
+      <small>{{ profile.genre if is_author else profile.platform }}</small>
+    </a>
+    {% else %}
+    <p class="muted">暂无资源。</p>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <h2>{{ "编辑资源" if edit_profile else "新建资源" }}</h2>
+    <form method="post" action="/resources/{{ kind }}/save">
+      <input type="hidden" name="profile_id" value="{{ edit_profile.id if edit_profile else 0 }}">
+      <label>JSON 配置<textarea name="payload" rows="20">{% if edit_profile %}{{ edit_profile|tojson(indent=2) }}{% elif is_author %}{
+  "name": "新作者",
+  "genre": "",
+  "pov_preference": "third_limited",
+  "sentence_rhythm": "",
+  "dialogue_style": "",
+  "payoff_preference": "",
+  "forbidden_items": "",
+  "prompt_rules": ""
+}{% else %}{
+  "name": "新编辑",
+  "platform": "",
+  "word_count_rule": "",
+  "pov_rule": "",
+  "structure_rule": "",
+  "payoff_rule": "",
+  "pollution_rule": "",
+  "reject_threshold": 1
+}{% endif %}</textarea></label>
+      <button class="primary-action" type="submit">保存资源</button>
+    </form>
+    {% if edit_profile %}
+    <form method="post" action="/resources/{{ kind }}/delete" class="danger-zone">
+      <input type="hidden" name="profile_id" value="{{ edit_profile.id }}">
+      <button type="submit">删除资源</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>导入 JSON</h2>
+  <form method="post" action="/resources/{{ kind }}/import">
+    <label>JSON 数组或单个对象<textarea name="json_text" rows="8"></textarea></label>
+    <button type="submit">导入资源</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}漂移报告 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">连续性审计</p>
+  <h1>漂移报告</h1>
+</section>
+<section class="panel">
+  <form class="inline-form" method="post" action="/books/{{ book.id }}/continuity/drift">
+    <input type="number" name="chapter_no" value="0" min="0" placeholder="章节号，0 为全局">
+    <button type="submit">生成漂移检查</button>
+  </form>
+  {% for report in reports %}
+  <details class="artifact" open>
+    <summary>第 {{ report.chapter_no or "全局" }} 章</summary>
+    <pre>{{ report.content }}</pre>
+  </details>
+  {% else %}
+  <p class="muted">暂无漂移报告。</p>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}检索审计 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">检索审计</p>
+  <h1>{{ book.title }}</h1>
+  <p class="muted">这里展示每章生成正文时为什么取用了这些记忆，便于排查连续性污染。</p>
+</section>
+<section class="panel">
+  {% for log in logs %}
+  <details class="artifact" open>
+    <summary>第 {{ log.chapter_no }} 章 · run {{ log.run_id or "-" }}</summary>
+    <p><strong>查询：</strong>{{ log.query }}</p>
+    <p><strong>记忆：</strong>{{ log.selected_memory_ids }}</p>
+    <p><strong>事实：</strong>{{ log.selected_atom_ids }}</p>
+    <p><strong>原因：</strong>{{ log.reason }}</p>
+  </details>
+  {% else %}
+  <p class="muted">还没有生成记录。</p>
+  {% endfor %}
+</section>
+{% endblock %}

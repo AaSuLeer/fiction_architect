@@ -1,47 +1,42 @@
 {% extends "base.html" %}
+{% block title %}书架 - fiction_architect{% endblock %}
 {% block content %}
-<section class="head">
+<section class="hero-shelf">
   <div>
-    <p class="eyebrow">Long-form Webnovel Architecture</p>
-    <h1>长篇小说生产工作台</h1>
+    <p class="eyebrow">作家工作台</p>
+    <h1>我的书架</h1>
+    <p class="muted">每本书都是独立对象：开书设定、作者、编辑、连续性记忆、章节批次和导出都在单书内维护。</p>
   </div>
+  <a class="primary-action" href="/books/create">新建作品</a>
 </section>
 
-<section class="panel">
-  <h2>新建正式作品</h2>
-  <form class="form-grid" method="post" action="/books/create">
-    <label>书名<input name="title" required placeholder="例如：废校词条师"></label>
-    <label>核心卖点<textarea name="premise" rows="3" placeholder="一句话写清主角、能力、压迫、代价、爽点方向"></textarea></label>
-    <button type="submit">创建作品并生成基础架构</button>
-  </form>
-</section>
-
-{% if current %}
-<section class="panel">
-  <h2>{{ current.title }}</h2>
-  <p>{{ current.premise }}</p>
-  <div class="grid">
-    {% for plan in plans %}
-    <a class="chapter-card" href="/books/{{ current.id }}/chapters/{{ plan.chapter_no }}">
-      <strong>第{{ plan.chapter_no }}章 {{ plan.title }}</strong>
-      <span>{{ plan.objective }}</span>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="panel">
-  <h2>事件流</h2>
-  <table>
-    {% for event in events %}
-    <tr><td>{{ event.created_at }}</td><td>{{ event.event_type }}</td><td>{{ event.message }}</td></tr>
-    {% endfor %}
-  </table>
+{% if shelf %}
+<section class="bookshelf">
+  {% for item in shelf %}
+  <a class="book-card" href="/books/{{ item.book.id }}">
+    <div class="cover">
+      {% if item.record.cover_path %}
+      <img src="{{ item.record.cover_path }}" alt="{{ item.book.title }}">
+      {% else %}
+      <span>{{ item.book.title[:2] }}</span>
+      {% endif %}
+    </div>
+    <div class="book-meta">
+      <h2>{{ item.book.title }}</h2>
+      <p>{{ item.book.premise }}</p>
+      <div class="book-stats">
+        <span>约 {{ item.total_chars }} 字</span>
+        <span>{% if item.latest %}最新：第 {{ item.latest.chapter_no }} 章{% else %}尚未生成正文{% endif %}</span>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
 </section>
 {% else %}
-<section class="panel empty">
-  <h2>还没有书</h2>
-  <p>创建正式作品后，系统会生成全书、卷、单元和前三章细纲，你可以继续在书籍页修改文风、大纲和章节控制。</p>
+<section class="empty-state">
+  <h2>书架还是空的</h2>
+  <p>先建立第一本正式作品。系统会生成基础大纲、首个单元和初始人物设定，之后进入人工确认页。</p>
+  <a class="primary-action" href="/books/create">开始开书</a>
 </section>
 {% endif %}
 {% endblock %}

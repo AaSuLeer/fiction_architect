@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.storage.repository import Repository
+from app.storage.repository import POV_LABELS, Repository
 
 
 class AuthorRoom:
@@ -11,52 +11,39 @@ class AuthorRoom:
 
     def build_brief(self, book_id: int, chapter_no: int):
         ctx = self.repo.get_architecture_context(book_id, chapter_no)
+        book = ctx["book"]
         plan = ctx["plan"]
-        arc = ctx["arc"]
-        volume = ctx["volume"]
-        style = ctx["style"]
+        author = ctx.get("author_profile") or {}
         settings = ctx["settings"]
+        pov = book.get("pov_policy") or settings.get("pov_policy") or "third_limited"
         brief = {
-            "department": "author_room",
+            "name": "本章写作任务",
             "chapter_no": chapter_no,
             "chapter_title": plan["title"],
-            "market_channel": settings.get("market_channel", "中国网文男频爽文"),
-            "target_chars_min": settings.get("target_chars_min", 2200),
-            "target_chars_max": settings.get("target_chars_max", 3200),
-            "chapter_unit_size": settings.get("chapter_unit_size", 3),
-            "pov_policy": self._pov_text(settings.get("pov_policy", "third_limited")),
-            "style_lock": style["rules"],
-            "chapter_objective": plan["objective"],
-            "story_shape": {
-                "cause": "起因：第一屏必须给出具体压力、损失或倒计时，让主角不得不行动。",
-                "process": "经过：主角至少做两次判断/试探/反击，对手或规则必须产生反应。",
-                "result": "结果：本章要有小兑现或阶段性失败，并留下清楚代价或下一章钩子。",
+            "target_chars": plan.get("target_chars") or settings.get("target_chars_max", 2600),
+            "pov": POV_LABELS.get(pov, "第三人称有限视角"),
+            "author_style": {
+                "name": author.get("name", "默认作者"),
+                "sentence_rhythm": author.get("sentence_rhythm", ""),
+                "dialogue_style": author.get("dialogue_style", ""),
+                "payoff_preference": author.get("payoff_preference", ""),
+                "forbidden_items": author.get("forbidden_items", ""),
+                "prompt_rules": author.get("prompt_rules", ""),
             },
-            "unit_goal": arc["goal"],
-            "volume_goal": volume["goal"],
-            "pressure_rotation": arc["pressure"],
-            "allowed_reveals": plan["allowed_reveals"],
-            "forbidden_reveals": plan["forbidden_reveals"],
-            "pace_limit": plan["pace_limit"],
-            "market_shape": [
-                settings.get("hook_policy", "每章至少有一个可感知压力源和一个可兑现的小爽点。"),
-                "第一屏必须出现可计量压力、惩罚、排名或公开比较。",
-                "爽点必须从行动中产生，不能靠旁白宣布主角很强。",
-                "本章只解决章节目标，不提前解决单元、卷或全书问题。",
-            ],
-            "pacing_policy": settings.get("pacing_policy", "章节服务单元，单元服务卷。"),
-            "anti_template": [
-                "句长自然变化，避免连续同构短句或整段长句。",
-                "细节只服务动作、证据、代价、规则或回收。",
-                "不得把大纲、世界观、人设关系写成说明书。",
-                "不得写成散文片段、设定条目或单纯情绪独白；必须像小说一样有起因、经过、结果。",
-            ],
+            "book_setup": {
+                "genre": book.get("genre", ""),
+                "market_channel": book.get("market_channel", ""),
+                "target_reader": book.get("target_reader", ""),
+                "story_mainline": book.get("story_mainline", ""),
+                "worldbuilding": "仅作写作约束，不得说明书式写入正文。",
+            },
+            "chapter_control": {
+                "objective": plan["objective"],
+                "plot_summary": plan.get("plot_summary", ""),
+                "allowed_reveals": plan["allowed_reveals"],
+                "forbidden_reveals": plan["forbidden_reveals"],
+                "pace_limit": plan["pace_limit"],
+            },
+            "story_shape": "必须有起因、经过、结果；爽点来自行动和局势变化；结尾留下代价或新钩子。",
         }
         return self.repo.create_artifact(book_id, chapter_no, "author_brief", "ready", json.dumps(brief, ensure_ascii=False, indent=2))
-
-    def _pov_text(self, pov_policy: str) -> str:
-        if pov_policy == "first_person":
-            return "使用第一人称主角视角，旁白可用“我”，但信息范围不能超过主角认知。"
-        if pov_policy == "third_omniscient":
-            return "使用第三人称全知视角，但不得用说明书式旁白替代剧情推进。"
-        return "使用第三人称有限视角；对话里可以自然出现“我”，旁白信息范围贴近主角。"

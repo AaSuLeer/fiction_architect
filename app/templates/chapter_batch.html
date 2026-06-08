@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}章节批次 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head split-head">
+  <div>
+    <p class="eyebrow">章节批次</p>
+    <h1>第 {{ batch.start_chapter }}-{{ batch.end_chapter }} 章</h1>
+    <p class="muted">点击卡片修改标题、细纲、目标、推进限制、梗概和目标字数。确认后点“生成正文”。</p>
+  </div>
+  <form method="post" action="/books/{{ book.id }}/chapter-batches/{{ batch.id }}/generate" data-progress-form>
+    <button class="primary-action" type="submit">生成正文</button>
+  </form>
+</section>
+
+<section class="progress-panel" data-progress-panel hidden>
+  <div class="progress-bar"><span data-progress-bar></span></div>
+  <p data-progress-text>正在准备连续性资料...</p>
+</section>
+
+<section class="batch-status panel">
+  <strong>当前状态：{{ batch.status }}</strong>
+  <span>{{ batch.current_stage or batch.error_message or "等待生成" }}</span>
+</section>
+
+<section class="chapter-card-grid">
+  {% for plan in plans %}
+  {% set body = bodies.get(plan.chapter_no) %}
+  <a class="chapter-card" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
+    <div class="chapter-card-head">
+      <h2>第 {{ plan.chapter_no }} 章：{{ plan.title }}</h2>
+      <span>{{ body.status if body else plan.status }}</span>
+    </div>
+    <p class="scroll-line">{{ plan.plot_summary or plan.objective }}</p>
+    <div class="chapter-card-foot">
+      <span>目标 {{ plan.target_chars or 2600 }} 字</span>
+      <span>进入详情</span>
+    </div>
+  </a>
+  {% endfor %}
+</section>
+{% endblock %}

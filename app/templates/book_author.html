@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}作者设置 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">作者设置</p>
+  <h1>{{ book.title }} 的专属文风</h1>
+  <p class="muted">这里是从全局作者资源复制出来的单书覆盖配置，修改不会影响资源坞模板或其他作品。</p>
+</section>
+
+<section class="panel">
+  <h2>从资源坞重新复制作者</h2>
+  <form class="inline-form" method="post" action="/books/{{ book.id }}/author/from-resource">
+    <select name="author_profile_id">
+      {% for author in authors %}
+      <option value="{{ author.id }}">{{ author.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">复制到本书</button>
+  </form>
+</section>
+
+{% set profile = controls.author_profile or {} %}
+<form class="panel wide-form" method="post" action="/books/{{ book.id }}/author">
+  <div class="form-grid">
+    <label>作者名称<input name="name" value="{{ profile.name or '' }}"></label>
+    <label>适用题材<input name="genre" value="{{ profile.genre or '' }}"></label>
+    <label>人称偏好
+      <select name="pov_preference">
+        {% for value, label in pov_labels.items() %}
+        <option value="{{ value }}" {% if profile.pov_preference == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <label>句式节奏<textarea name="sentence_rhythm" rows="4">{{ profile.sentence_rhythm or '' }}</textarea></label>
+  <label>对白风格<textarea name="dialogue_style" rows="4">{{ profile.dialogue_style or '' }}</textarea></label>
+  <label>爽点偏好<textarea name="payoff_preference" rows="4">{{ profile.payoff_preference or '' }}</textarea></label>
+  <label>禁用项<textarea name="forbidden_items" rows="4">{{ profile.forbidden_items or '' }}</textarea></label>
+  <label>Prompt 规则<textarea name="prompt_rules" rows="6">{{ profile.prompt_rules or '' }}</textarea></label>
+  <label>示例摘要/学习笔记<textarea name="sample_summary" rows="5">{{ profile.sample_summary or '' }}</textarea></label>
+  <div class="form-actions">
+    <button class="primary-action" type="submit">保存本书作者设置</button>
+  </div>
+</form>
+{% endblock %}

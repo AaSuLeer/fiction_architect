@@ -1,48 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="head">
-  <div>
-    <p class="eyebrow">Editorial Debugger</p>
-    <h1>小说规则调试台</h1>
-    <p>粘贴一段正文，按当前作品的字数、人称、结构和污染规则做预检查。</p>
-  </div>
-</section>
-
-{% if not book %}
-<section class="panel"><p>请先创建作品。</p></section>
-{% else %}
+<section class="head"><h1>审稿调试台</h1></section>
 <section class="panel">
-  <h2>当前规则</h2>
-  <div class="kv">
-    <span>作品</span><strong>{{ book.title }}</strong>
-    <span>目标字数</span><strong>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</strong>
-    <span>人称策略</span><strong>{{ controls.settings.pov_policy }}</strong>
-    <span>文风规则</span><strong>{{ controls.style.rules }}</strong>
-  </div>
-</section>
-<section class="panel">
-  <h2>正文调试</h2>
   <form class="form-grid" method="post" action="/debug">
-    <input type="hidden" name="book_id" value="{{ book.id }}">
-    <label>待检查正文<textarea name="sample" rows="14">{{ sample }}</textarea></label>
-    <button type="submit">运行编辑检查</button>
+    <label>选择作品
+      <select name="book_id">
+        {% for item in books %}
+        <option value="{{ item.id }}" {% if book and item.id == book.id %}selected{% endif %}>{{ item.title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>待测正文<textarea name="sample" rows="12">{{ sample }}</textarea></label>
+    <button type="submit">按当前作者/编辑规则测试</button>
   </form>
 </section>
-{% if result %}
+{% if controls %}
 <section class="panel">
-  <h2>检查结果</h2>
-  <div class="kv">
-    <span>状态</span><strong>{% if result.passed %}通过{% else %}未通过{% endif %}</strong>
-    <span>字数</span><strong>{{ result.char_count }}</strong>
-  </div>
-  {% if result.problems %}
-  <ul>
-    {% for problem in result.problems %}
-    <li>{{ problem }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  <h2>当前规则</h2>
+  <div class="kv"><span>作者</span><b>{{ controls.author_profile.name if controls.author_profile else "未选择" }}</b><span>编辑</span><b>{{ controls.editor_profile.name if controls.editor_profile else "未选择" }}</b><span>人称</span><b>{{ controls.settings.pov_policy }}</b><span>字数</span><b>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</b></div>
 </section>
 {% endif %}
+{% if result %}
+<section class="panel">
+  <h2>测试结果</h2>
+  <p>字数：{{ result.char_count }}；状态：{% if result.passed %}通过{% else %}拒稿{% endif %}</p>
+  <ul>{% for problem in result.problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+</section>
 {% endif %}
 {% endblock %}

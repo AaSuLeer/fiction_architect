@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}新建章节 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">新建章节</p>
+  <h1>创建章节批次</h1>
+  <p class="muted">默认三章，最多二十章。系统会按已有章节号继续生成章节卡片，先让你确认细纲，再统一生成正文。</p>
+</section>
+
+<form class="panel narrow-form" method="post" action="/books/{{ book.id }}/chapter-batches/new">
+  <label>本次新建章节数
+    <input type="number" name="chapter_count" value="3" min="1" max="20">
+  </label>
+  <button class="primary-action" type="submit">生成章节卡片</button>
+</form>
+{% endblock %}

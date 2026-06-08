@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}DOCX 导出 - fiction_architect{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">导出记录</p>
+  <h1>DOCX 导出</h1>
+  <p class="muted">导出成功后，导出版本正文才会写回连续性工作室。</p>
+</section>
+<section class="panel">
+  {% for export in exports %}
+  <a class="list-row" href="/exports/{{ export.id }}/download">
+    <span>{{ export.book_title or ("作品 #" ~ export.book_id) }} · {{ export.export_type }}</span>
+    <strong>{{ export.status }}</strong>
+  </a>
+  {% else %}
+  <p class="muted">暂无导出记录。</p>
+  {% endfor %}
+</section>
+{% endblock %}

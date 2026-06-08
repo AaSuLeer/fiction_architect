@@ -1,77 +1,59 @@
 {% extends "base.html" %}
+{% block title %}第 {{ plan.chapter_no }} 章 - {{ book.title }}{% endblock %}
 {% block content %}
-<section class="head">
-  <div>
-    <p class="eyebrow">Chapter Pipeline</p>
-    <h1>第{{ plan.chapter_no }}章 {{ plan.title }}</h1>
-    <p>{{ plan.objective }}</p>
+<section class="page-head">
+  <p class="eyebrow">章节卡片</p>
+  <h1>第 {{ plan.chapter_no }} 章：{{ plan.title }}</h1>
+  <p class="muted">这里仅维护本章细纲，不修改全书持久设定。</p>
+</section>
+
+<form class="panel wide-form" method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/plan">
+  <label>章节标题<input name="title" value="{{ plan.title }}" required></label>
+  <label>章节目标<textarea name="objective" rows="4">{{ plan.objective }}</textarea></label>
+  <label>剧情梗概<textarea name="plot_summary" rows="4">{{ plan.plot_summary or '' }}</textarea></label>
+  <label>允许推进/揭示<textarea name="allowed_reveals" rows="4">{{ plan.allowed_reveals }}</textarea></label>
+  <label>禁止提前推进<textarea name="forbidden_reveals" rows="4">{{ plan.forbidden_reveals }}</textarea></label>
+  <label>推进限制<textarea name="pace_limit" rows="4">{{ plan.pace_limit }}</textarea></label>
+  <label>目标字数<input type="number" name="target_chars" value="{{ plan.target_chars or 2600 }}" min="800"></label>
+  <div class="form-actions">
+    <button class="primary-action" type="submit">保存</button>
   </div>
-  <form class="pipeline-form" method="post" action="/books/{{ plan.book_id }}/chapters/{{ plan.chapter_no }}/run">
-    <button type="submit">运行章节管道</button>
-    <div class="pipeline-progress" aria-hidden="true">
-      <div class="pipeline-bar"></div>
-      <span class="pipeline-text">等待运行</span>
-    </div>
-  </form>
-</section>
+</form>
 
-<section class="panel">
-  <h2>章节细纲与长篇门禁</h2>
-  <form class="form-grid" method="post" action="/books/{{ plan.book_id }}/chapters/{{ plan.chapter_no }}/plan">
-    <label>章节标题<input name="title" value="{{ plan.title }}"></label>
-    <label>章节目标<textarea name="objective" rows="3">{{ plan.objective }}</textarea></label>
-    <label>允许揭露<textarea name="allowed_reveals" rows="3">{{ plan.allowed_reveals }}</textarea></label>
-    <label>禁止揭露<textarea name="forbidden_reveals" rows="3">{{ plan.forbidden_reveals }}</textarea></label>
-    <label>推进限制<textarea name="pace_limit" rows="3">{{ plan.pace_limit }}</textarea></label>
-    <button type="submit">保存章节细纲</button>
-  </form>
-</section>
-
-<section class="panel">
-  <h2>文风、大纲与字数目标</h2>
-  <div class="kv">
-    <span>市场频道</span><strong>{{ controls.settings.market_channel }}</strong>
-    <span>目标字数</span><strong>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</strong>
-    <span>人称策略</span><strong>{{ controls.settings.pov_policy }}</strong>
-    <span>文风规则</span><strong>{{ controls.style.rules }}</strong>
-    <span>卷目标</span><strong>{{ controls.volume.goal }}</strong>
-    <span>单元目标</span><strong>{{ controls.arc.goal }}</strong>
-    <span>压力轮换</span><strong>{{ controls.arc.pressure }}</strong>
+<section class="two-col">
+  <div class="panel">
+    <h2>正文状态</h2>
+    {% if body %}
+    <p><strong>{{ body.status }}</strong></p>
+    <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/confirm">
+      <label>正文（人工可修改）<textarea name="body" rows="22">{{ body.body }}</textarea></label>
+      <button class="primary-action" type="submit">人工确认正文</button>
+    </form>
+    {% else %}
+    <p class="muted">本章尚未生成正文。</p>
+    <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/generate" data-progress-form>
+      <button class="primary-action" type="submit">生成正文</button>
+    </form>
+    {% endif %}
   </div>
-</section>
-
-<section class="panel">
-  <h2>当前门禁摘要</h2>
-  <div class="kv">
-    <span>允许揭露</span><strong>{{ plan.allowed_reveals }}</strong>
-    <span>禁止揭露</span><strong>{{ plan.forbidden_reveals }}</strong>
-    <span>节奏限制</span><strong>{{ plan.pace_limit }}</strong>
+  <div class="panel">
+    <h2>生产记录</h2>
+    {% if task %}
+    <div class="notice">重写任务：{{ task.status }}，已尝试 {{ task.attempts }} 次。</div>
+    <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/rewrite">
+      <button type="submit">按编辑意见重写</button>
+    </form>
+    {% endif %}
+    {% if artifacts %}
+      {% for artifact in artifacts %}
+      <details class="artifact">
+        <summary>{{ artifact.label }} · {{ artifact.status }}</summary>
+        <pre>{{ artifact.content }}</pre>
+      </details>
+      {% endfor %}
+    {% else %}
+      <p class="muted">暂无记录。</p>
+    {% endif %}
   </div>
-</section>
-
-<section class="panel">
-  <h2>生产资料</h2>
-  <div class="grid">
-    {% for name, artifact in artifacts.items() %}
-    <div class="artifact">
-      <strong>{{ name }}</strong>
-      {% if artifact %}
-      <span>{{ artifact.status }}</span>
-      <pre>{{ artifact.content }}</pre>
-      {% else %}
-      <span>未生成</span>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="panel reading">
-  <h2>正文</h2>
-  {% if body %}
-  <article>{{ body.body | replace('\n', '<br>') | safe }}</article>
-  {% else %}
-  <p>未有审稿通过的正文。</p>
-  {% endif %}
 </section>
 {% endblock %}

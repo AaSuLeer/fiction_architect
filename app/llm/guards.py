@@ -41,10 +41,8 @@ class TextGuard:
         for term in EXPOSITION_TERMS:
             if term in body:
                 problems.append(f"说明书式写作：出现 `{term}`")
-        long_paragraphs = [part for part in body.split("\n\n") if len(part) > 420]
-        if long_paragraphs:
+        if any(len(part) > 620 for part in body.split("\n\n")):
             problems.append("AI味风险：存在过长段落，容易变成设定说明或整齐模板。")
-        if body.count("。") < 6:
+        if body.count("。") + body.count("！") + body.count("？") < 12:
             problems.append("章节过薄：正文动作、反应和代价不足。")
         return ContaminationResult(not problems, problems)
-

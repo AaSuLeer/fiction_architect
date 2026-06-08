@@ -1,21 +1,27 @@
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".pipeline-form").forEach((form) => {
+  document.querySelectorAll("[data-progress-form]").forEach((form) => {
     form.addEventListener("submit", () => {
       const button = form.querySelector("button[type='submit']");
-      const progress = form.querySelector(".pipeline-progress");
-      const text = form.querySelector(".pipeline-text");
+      const panel = document.querySelector("[data-progress-panel]");
+      const text = document.querySelector("[data-progress-text]");
       if (button) {
         button.disabled = true;
-        button.textContent = "管道运行中...";
+        button.textContent = "正在生成...";
       }
-      if (progress) progress.classList.add("active");
-      const stages = ["作者部门生成写作任务书", "连续性工作室准备资料", "写作部门生成正文", "编辑部门审稿", "连续性工作室写回候选"];
+      if (panel) panel.hidden = false;
+      const stages = [
+        "整理本章写作任务",
+        "检索连续性资料",
+        "调用大模型写作",
+        "编辑审核与自动重写",
+        "等待人工确认正文"
+      ];
       let index = 0;
       if (text) text.textContent = stages[index];
       window.setInterval(() => {
         index = Math.min(index + 1, stages.length - 1);
         if (text) text.textContent = stages[index];
-      }, 900);
+      }, 1100);
     });
   });
 });

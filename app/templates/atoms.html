@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}事实池 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">连续性事实池</p>
+  <h1>{{ book.title }}</h1>
+  <p class="muted">未批准 atom 不会进入后续写作资料包。</p>
+</section>
+<section class="panel">
+  {% for atom in atoms %}
+  <div class="atom-row wide">
+    <div>
+      <strong>{{ atom.atom_type }}</strong>
+      <p>{{ atom.content }}</p>
+      <small>可见章节：{{ atom.visible_after_chapter }} · 可信度：{{ atom.confidence }} · 来源导出：{{ atom.source_export_id or "-" }}</small>
+    </div>
+    <div class="row-actions">
+      <form method="post" action="/books/{{ book.id }}/continuity/atoms/{{ atom.id }}/approved"><button type="submit">批准</button></form>
+      <form method="post" action="/books/{{ book.id }}/continuity/atoms/{{ atom.id }}/rejected"><button type="submit">拒绝</button></form>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">暂无候选事实。</p>
+  {% endfor %}
+</section>
+{% endblock %}

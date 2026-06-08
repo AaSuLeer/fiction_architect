@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+import tempfile
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Iterator
 
 from app.config import Settings
@@ -14,6 +16,21 @@ SCHEMA_TABLES = [
         title VARCHAR(255) NOT NULL,
         premise TEXT NOT NULL,
         status VARCHAR(50) NOT NULL DEFAULT 'active',
+        cover_path TEXT,
+        genre VARCHAR(100) NOT NULL DEFAULT '',
+        market_channel VARCHAR(100) NOT NULL DEFAULT '中国网文男频爽文',
+        target_reader TEXT NOT NULL DEFAULT '',
+        pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited',
+        target_chars_min INTEGER NOT NULL DEFAULT 2200,
+        target_chars_max INTEGER NOT NULL DEFAULT 3200,
+        story_mainline TEXT NOT NULL DEFAULT '',
+        worldbuilding TEXT NOT NULL DEFAULT '',
+        imported_outline TEXT NOT NULL DEFAULT '',
+        current_chapter_no INTEGER NOT NULL DEFAULT 0,
+        author_profile_id INTEGER,
+        editor_profile_id INTEGER,
+        book_author_profile_id INTEGER,
+        book_editor_profile_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -40,17 +57,34 @@ SCHEMA_TABLES = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS chapter_batches (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        start_chapter INTEGER NOT NULL,
+        end_chapter INTEGER NOT NULL,
+        chapter_count INTEGER NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'planning',
+        progress_message TEXT NOT NULL DEFAULT '',
+        error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS chapter_plans (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         book_id INTEGER NOT NULL,
         volume_id INTEGER NOT NULL,
         arc_id INTEGER NOT NULL,
+        batch_id INTEGER,
         chapter_no INTEGER NOT NULL,
         title VARCHAR(255) NOT NULL,
         objective TEXT NOT NULL,
         allowed_reveals TEXT NOT NULL,
         forbidden_reveals TEXT NOT NULL,
         pace_limit TEXT NOT NULL,
+        plot_summary TEXT NOT NULL DEFAULT '',
+        target_chars INTEGER NOT NULL DEFAULT 2600,
+        review_rounds INTEGER NOT NULL DEFAULT 0,
         status VARCHAR(50) NOT NULL DEFAULT 'planned',
         UNIQUE (book_id, chapter_no)
     )
@@ -68,15 +102,76 @@ SCHEMA_TABLES = [
     CREATE TABLE IF NOT EXISTS production_settings (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         book_id INTEGER NOT NULL,
-        market_channel VARCHAR(100) NOT NULL DEFAULT '男频爽文',
-        target_chars_min INTEGER NOT NULL DEFAULT 1800,
-        target_chars_max INTEGER NOT NULL DEFAULT 2600,
+        market_channel VARCHAR(100) NOT NULL DEFAULT '中国网文男频爽文',
+        target_chars_min INTEGER NOT NULL DEFAULT 2200,
+        target_chars_max INTEGER NOT NULL DEFAULT 3200,
         chapter_unit_size INTEGER NOT NULL DEFAULT 3,
         pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited',
         hook_policy TEXT NOT NULL,
         pacing_policy TEXT NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (book_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS author_profiles (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        genre TEXT NOT NULL,
+        pov_preference VARCHAR(100) NOT NULL DEFAULT 'third_limited',
+        sentence_rhythm TEXT NOT NULL,
+        dialogue_style TEXT NOT NULL,
+        payoff_preference TEXT NOT NULL,
+        forbidden_items TEXT NOT NULL,
+        prompt_rules TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS editor_profiles (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        platform VARCHAR(255) NOT NULL,
+        word_count_rule TEXT NOT NULL,
+        pov_rule TEXT NOT NULL,
+        structure_rule TEXT NOT NULL,
+        payoff_rule TEXT NOT NULL,
+        pollution_rule TEXT NOT NULL,
+        reject_threshold INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS book_author_profiles (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        source_profile_id INTEGER,
+        name VARCHAR(255) NOT NULL,
+        genre TEXT NOT NULL,
+        pov_preference VARCHAR(100) NOT NULL DEFAULT 'third_limited',
+        sentence_rhythm TEXT NOT NULL,
+        dialogue_style TEXT NOT NULL,
+        payoff_preference TEXT NOT NULL,
+        forbidden_items TEXT NOT NULL,
+        prompt_rules TEXT NOT NULL,
+        sample_summary TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS book_editor_profiles (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        source_profile_id INTEGER,
+        name VARCHAR(255) NOT NULL,
+        platform VARCHAR(255) NOT NULL,
+        word_count_rule TEXT NOT NULL,
+        pov_rule TEXT NOT NULL,
+        structure_rule TEXT NOT NULL,
+        payoff_rule TEXT NOT NULL,
+        pollution_rule TEXT NOT NULL,
+        reject_threshold INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
     """
@@ -88,6 +183,7 @@ SCHEMA_TABLES = [
         desire TEXT NOT NULL,
         fear TEXT NOT NULL,
         voice TEXT NOT NULL,
+        biography TEXT NOT NULL DEFAULT '',
         status VARCHAR(50) NOT NULL DEFAULT 'active'
     )
     """,
@@ -150,7 +246,8 @@ SCHEMA_TABLES = [
         chapter_no INTEGER NOT NULL,
         title VARCHAR(255) NOT NULL,
         body TEXT NOT NULL,
-        status VARCHAR(50) NOT NULL DEFAULT 'approved',
+        status VARCHAR(50) NOT NULL DEFAULT 'drafted',
+        export_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (book_id, chapter_no)
     )
@@ -161,6 +258,88 @@ SCHEMA_TABLES = [
         book_id INTEGER NOT NULL,
         chapter_no INTEGER NOT NULL,
         status VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rewrite_tasks (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        review_artifact_id INTEGER NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 3,
+        error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS continuity_memories (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        memory_type VARCHAR(50) NOT NULL,
+        scope_key VARCHAR(100) NOT NULL,
+        version INTEGER NOT NULL,
+        source_export_id INTEGER,
+        source_start_chapter INTEGER,
+        source_end_chapter INTEGER,
+        is_current INTEGER NOT NULL DEFAULT 1,
+        compression_mode VARCHAR(50) NOT NULL DEFAULT 'structured_budget',
+        token_budget INTEGER NOT NULL DEFAULT 1200,
+        retrieval_count INTEGER NOT NULL DEFAULT 0,
+        last_used_at TIMESTAMP NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS continuity_atoms (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        atom_type VARCHAR(100) NOT NULL,
+        content TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+        visible_after_chapter INTEGER NOT NULL DEFAULT 0,
+        source_ref VARCHAR(100) NOT NULL,
+        source_export_id INTEGER,
+        characters TEXT NOT NULL DEFAULT '',
+        foreshadowing_tags TEXT NOT NULL DEFAULT '',
+        confidence REAL NOT NULL DEFAULT 0.6,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_retrieval_logs (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        run_id INTEGER,
+        chapter_no INTEGER NOT NULL,
+        query TEXT NOT NULL,
+        selected_memory_ids TEXT NOT NULL,
+        selected_atom_ids TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS drift_reports (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        status VARCHAR(50) NOT NULL DEFAULT 'open',
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS export_records (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        export_type VARCHAR(50) NOT NULL,
+        file_path TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'ready',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -229,7 +408,12 @@ class Database:
         if self.settings.using_mysql:
             return self._connect_mysql()
         self.settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.settings.sqlite_path)
+        try:
+            conn = sqlite3.connect(self.settings.sqlite_path)
+        except sqlite3.OperationalError:
+            fallback = Path(tempfile.gettempdir()) / "fiction_architect" / self.settings.sqlite_path.name
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(fallback)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -250,7 +434,7 @@ class Database:
 
     def adapt_sql(self, sql: str) -> str:
         if self.settings.using_mysql:
-            return sql
+            return sql.replace("TEXT NOT NULL DEFAULT ''", "TEXT NULL")
         return sql.replace(" INTEGER PRIMARY KEY AUTO_INCREMENT", " INTEGER PRIMARY KEY AUTOINCREMENT")
 
 
@@ -261,17 +445,104 @@ def initialize_database(db: Database) -> None:
         for statement in SCHEMA_TABLES:
             cur.execute(db.adapt_sql(statement))
         _ensure_schema_columns(db, conn)
+        _remove_sample_books(db, conn)
 
 
 def _ensure_schema_columns(db: Database, conn: Any) -> None:
-    if db.settings.using_mysql:
-        cur = conn.cursor()
-        cur.execute("SHOW COLUMNS FROM production_settings LIKE 'pov_policy'")
-        if cur.fetchone() is None:
-            cur.execute("ALTER TABLE production_settings ADD COLUMN pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited'")
-        return
+    expected = {
+        "books": {
+            "cover_path": "TEXT",
+            "genre": "VARCHAR(100) NOT NULL DEFAULT ''",
+            "market_channel": "VARCHAR(100) NOT NULL DEFAULT '中国网文男频爽文'",
+            "target_reader": "TEXT NOT NULL DEFAULT ''",
+            "pov_policy": "VARCHAR(100) NOT NULL DEFAULT 'third_limited'",
+            "target_chars_min": "INTEGER NOT NULL DEFAULT 2200",
+            "target_chars_max": "INTEGER NOT NULL DEFAULT 3200",
+            "story_mainline": "TEXT NOT NULL DEFAULT ''",
+            "worldbuilding": "TEXT NOT NULL DEFAULT ''",
+            "imported_outline": "TEXT NOT NULL DEFAULT ''",
+            "current_chapter_no": "INTEGER NOT NULL DEFAULT 0",
+            "author_profile_id": "INTEGER",
+            "editor_profile_id": "INTEGER",
+            "book_author_profile_id": "INTEGER",
+            "book_editor_profile_id": "INTEGER",
+        },
+        "chapter_plans": {
+            "batch_id": "INTEGER",
+            "plot_summary": "TEXT NOT NULL DEFAULT ''",
+            "target_chars": "INTEGER NOT NULL DEFAULT 2600",
+            "review_rounds": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "chapter_bodies": {
+            "export_id": "INTEGER",
+        },
+        "characters": {
+            "biography": "TEXT NOT NULL DEFAULT ''",
+        },
+        "continuity_memories": {
+            "source_export_id": "INTEGER",
+            "is_current": "INTEGER NOT NULL DEFAULT 1",
+            "compression_mode": "VARCHAR(50) NOT NULL DEFAULT 'structured_budget'",
+            "token_budget": "INTEGER NOT NULL DEFAULT 1200",
+            "retrieval_count": "INTEGER NOT NULL DEFAULT 0",
+            "last_used_at": "TIMESTAMP NULL",
+        },
+        "continuity_atoms": {
+            "source_export_id": "INTEGER",
+            "characters": "TEXT NOT NULL DEFAULT ''",
+            "foreshadowing_tags": "TEXT NOT NULL DEFAULT ''",
+            "confidence": "REAL NOT NULL DEFAULT 0.6",
+        },
+    }
     cur = conn.cursor()
-    cur.execute("PRAGMA table_info(production_settings)")
-    columns = {row[1] for row in cur.fetchall()}
-    if "pov_policy" not in columns:
-        cur.execute("ALTER TABLE production_settings ADD COLUMN pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited'")
+    if db.settings.using_mysql:
+        for table, columns in expected.items():
+            for column, definition in columns.items():
+                cur.execute(f"SHOW COLUMNS FROM {table} LIKE %s", (column,))
+                if cur.fetchone() is None:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {db.adapt_sql(definition)}")
+        return
+    for table, columns in expected.items():
+        cur.execute(f"PRAGMA table_info({table})")
+        existing = {row[1] for row in cur.fetchall()}
+        for column, definition in columns.items():
+            if column not in existing:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _remove_sample_books(db: Database, conn: Any) -> None:
+    ph = db.placeholder()
+    cur = conn.cursor()
+    cur.execute(f"SELECT id FROM books WHERE status = {ph}", ("sample",))
+    ids = [int(dict(row)["id"] if not isinstance(row, dict) else row["id"]) for row in cur.fetchall()]
+    if not ids:
+        return
+    tables = [
+        "volumes",
+        "story_arcs",
+        "chapter_batches",
+        "chapter_plans",
+        "style_profiles",
+        "production_settings",
+        "book_author_profiles",
+        "book_editor_profiles",
+        "characters",
+        "relationships",
+        "foreshadowings",
+        "canon_facts",
+        "visibility_rules",
+        "artifacts",
+        "chapter_bodies",
+        "pipeline_runs",
+        "rewrite_tasks",
+        "continuity_memories",
+        "continuity_atoms",
+        "memory_retrieval_logs",
+        "drift_reports",
+        "export_records",
+        "events",
+    ]
+    for book_id in ids:
+        for table in tables:
+            cur.execute(f"DELETE FROM {table} WHERE book_id = {ph}", (book_id,))
+        cur.execute(f"DELETE FROM books WHERE id = {ph}", (book_id,))
