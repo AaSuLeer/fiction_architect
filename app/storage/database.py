@@ -72,6 +72,7 @@ SCHEMA_TABLES = [
         target_chars_min INTEGER NOT NULL DEFAULT 1800,
         target_chars_max INTEGER NOT NULL DEFAULT 2600,
         chapter_unit_size INTEGER NOT NULL DEFAULT 3,
+        pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited',
         hook_policy TEXT NOT NULL,
         pacing_policy TEXT NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -259,3 +260,18 @@ def initialize_database(db: Database) -> None:
         cur = conn.cursor()
         for statement in SCHEMA_TABLES:
             cur.execute(db.adapt_sql(statement))
+        _ensure_schema_columns(db, conn)
+
+
+def _ensure_schema_columns(db: Database, conn: Any) -> None:
+    if db.settings.using_mysql:
+        cur = conn.cursor()
+        cur.execute("SHOW COLUMNS FROM production_settings LIKE 'pov_policy'")
+        if cur.fetchone() is None:
+            cur.execute("ALTER TABLE production_settings ADD COLUMN pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited'")
+        return
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(production_settings)")
+    columns = {row[1] for row in cur.fetchall()}
+    if "pov_policy" not in columns:
+        cur.execute("ALTER TABLE production_settings ADD COLUMN pov_policy VARCHAR(100) NOT NULL DEFAULT 'third_limited'")

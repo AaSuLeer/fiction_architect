@@ -24,6 +24,13 @@
     <label>最低字数<input type="number" name="target_chars_min" value="{{ controls.settings.target_chars_min }}"></label>
     <label>最高字数<input type="number" name="target_chars_max" value="{{ controls.settings.target_chars_max }}"></label>
     <label>单元章节数<input type="number" name="chapter_unit_size" value="{{ controls.settings.chapter_unit_size }}"></label>
+    <label>人称策略
+      <select name="pov_policy">
+        <option value="third_limited" {% if controls.settings.pov_policy == "third_limited" %}selected{% endif %}>第三人称有限视角</option>
+        <option value="first_person" {% if controls.settings.pov_policy == "first_person" %}selected{% endif %}>第一人称主角视角</option>
+        <option value="third_omniscient" {% if controls.settings.pov_policy == "third_omniscient" %}selected{% endif %}>第三人称全知视角</option>
+      </select>
+    </label>
     <label>文风规则<textarea name="style_rules" rows="5">{{ controls.style.rules }}</textarea></label>
     <label>钩子/爽点规则<textarea name="hook_policy" rows="3">{{ controls.settings.hook_policy }}</textarea></label>
     <label>推进节奏规则<textarea name="pacing_policy" rows="3">{{ controls.settings.pacing_policy }}</textarea></label>

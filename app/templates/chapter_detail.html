@@ -6,8 +6,12 @@
     <h1>第{{ plan.chapter_no }}章 {{ plan.title }}</h1>
     <p>{{ plan.objective }}</p>
   </div>
-  <form method="post" action="/books/{{ plan.book_id }}/chapters/{{ plan.chapter_no }}/run">
+  <form class="pipeline-form" method="post" action="/books/{{ plan.book_id }}/chapters/{{ plan.chapter_no }}/run">
     <button type="submit">运行章节管道</button>
+    <div class="pipeline-progress" aria-hidden="true">
+      <div class="pipeline-bar"></div>
+      <span class="pipeline-text">等待运行</span>
+    </div>
   </form>
 </section>
 
@@ -28,6 +32,7 @@
   <div class="kv">
     <span>市场频道</span><strong>{{ controls.settings.market_channel }}</strong>
     <span>目标字数</span><strong>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</strong>
+    <span>人称策略</span><strong>{{ controls.settings.pov_policy }}</strong>
     <span>文风规则</span><strong>{{ controls.style.rules }}</strong>
     <span>卷目标</span><strong>{{ controls.volume.goal }}</strong>
     <span>单元目标</span><strong>{{ controls.arc.goal }}</strong>
@@ -45,7 +50,7 @@
 </section>
 
 <section class="panel">
-  <h2>部门产物</h2>
+  <h2>生产资料</h2>
   <div class="grid">
     {% for name, artifact in artifacts.items() %}
     <div class="artifact">

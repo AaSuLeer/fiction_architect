@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="head">
+  <div>
+    <p class="eyebrow">Editorial Debugger</p>
+    <h1>小说规则调试台</h1>
+    <p>粘贴一段正文，按当前作品的字数、人称、结构和污染规则做预检查。</p>
+  </div>
+</section>
+
+{% if not book %}
+<section class="panel"><p>请先创建作品。</p></section>
+{% else %}
+<section class="panel">
+  <h2>当前规则</h2>
+  <div class="kv">
+    <span>作品</span><strong>{{ book.title }}</strong>
+    <span>目标字数</span><strong>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</strong>
+    <span>人称策略</span><strong>{{ controls.settings.pov_policy }}</strong>
+    <span>文风规则</span><strong>{{ controls.style.rules }}</strong>
+  </div>
+</section>
+<section class="panel">
+  <h2>正文调试</h2>
+  <form class="form-grid" method="post" action="/debug">
+    <input type="hidden" name="book_id" value="{{ book.id }}">
+    <label>待检查正文<textarea name="sample" rows="14">{{ sample }}</textarea></label>
+    <button type="submit">运行编辑检查</button>
+  </form>
+</section>
+{% if result %}
+<section class="panel">
+  <h2>检查结果</h2>
+  <div class="kv">
+    <span>状态</span><strong>{% if result.passed %}通过{% else %}未通过{% endif %}</strong>
+    <span>字数</span><strong>{{ result.char_count }}</strong>
+  </div>
+  {% if result.problems %}
+  <ul>
+    {% for problem in result.problems %}
+    <li>{{ problem }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

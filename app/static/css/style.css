@@ -82,7 +82,7 @@ label {
   font-size: 13px;
   font-weight: 700;
 }
-input, textarea {
+input, textarea, select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -131,6 +131,45 @@ pre {
   max-width: 760px;
   line-height: 1.85;
   font-size: 17px;
+}
+.pipeline-form {
+  min-width: 280px;
+}
+.pipeline-progress {
+  display: none;
+  position: relative;
+  margin-top: 10px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef2f7;
+}
+.pipeline-progress.active {
+  display: block;
+}
+.pipeline-bar {
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(90deg, #0f766e, #14b8a6, #155e75);
+  animation: pipeline-run 1.2s infinite ease-in-out;
+}
+.pipeline-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 700;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+@keyframes pipeline-run {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 @media (max-width: 760px) {
   .sidebar { position: static; width: auto; }

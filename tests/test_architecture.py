@@ -77,6 +77,36 @@ class ArchitectureTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 pipe.continuity.writeback(book_id, 1, draft.id)
 
+    def test_editor_rejects_short_draft(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_demo_book()
+            draft = repo.create_artifact(book_id, 1, "draft", "drafted", "林砚站在台前。倒计时只剩三十息。他伸手改了一个字，赢下资格，也欠下代价。")
+            review = pipe.editorial.review(book_id, 1, draft.id)
+            self.assertEqual("rejected", review.status)
+            self.assertIn("字数不达标", review.content)
+
+    def test_first_person_policy_is_configurable(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_demo_book()
+            controls = repo.get_book_controls(book_id)
+            repo.update_style_and_settings(
+                book_id,
+                controls["style"]["rules"],
+                controls["settings"]["market_channel"],
+                50,
+                5000,
+                controls["settings"]["chapter_unit_size"],
+                "first_person",
+                controls["settings"]["hook_policy"],
+                controls["settings"]["pacing_policy"],
+            )
+            sample = "我站在验词台前，倒计时只剩三十息。\n\n我伸手按住名册，先试探红印，再反问考官。\n\n最后我赢下临时资格，也欠下三日后的代价。"
+            draft = repo.create_artifact(book_id, 1, "draft", "drafted", sample)
+            review = pipe.editorial.review(book_id, 1, draft.id)
+            self.assertNotIn("人称错误", review.content)
+
     def test_story_arc_limits_chapters_one_to_three(self):
         with IsolatedEnv():
             repo = self.runtime()
@@ -88,4 +118,3 @@ class ArchitectureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

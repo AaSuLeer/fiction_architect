@@ -146,14 +146,15 @@ class Repository:
             )
         cur.execute(
             f"""INSERT INTO production_settings
-                (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, hook_policy, pacing_policy)
-                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, pov_policy, hook_policy, pacing_policy)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (
                 book_id,
                 "中国网文男频爽文",
-                1800,
-                2600,
+                2200,
+                3200,
                 3,
+                "third_limited",
                 "每章至少有一个可感知压力源和一个可兑现的小爽点；反转、打脸、奖励、惩罚轮换使用，避免机械重复。",
                 "章节服务单元，单元服务卷；前三章小闭环，五十章卷目标，不能越级推进，不能用旁白解释替代剧情动作。",
             ),
@@ -225,14 +226,15 @@ class Repository:
         ph = self.db.placeholder()
         conn.cursor().execute(
             f"""INSERT INTO production_settings
-                (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, hook_policy, pacing_policy)
-                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, pov_policy, hook_policy, pacing_policy)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (
                 book_id,
                 "中国网文男频爽文",
-                1800,
-                2600,
+                2200,
+                3200,
                 3,
+                "third_limited",
                 "每章至少有一个可感知压力源和一个可兑现的小爽点。",
                 "章节服务单元，单元服务卷；不能越级推进，不能说明书式写作。",
             ),
@@ -246,6 +248,7 @@ class Repository:
         target_chars_min: int,
         target_chars_max: int,
         chapter_unit_size: int,
+        pov_policy: str,
         hook_policy: str,
         pacing_policy: str,
     ) -> None:
@@ -254,18 +257,19 @@ class Repository:
             ph = self.db.placeholder()
             if self.db.is_mysql:
                 sql = f"""INSERT INTO production_settings
-                    (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, hook_policy, pacing_policy)
-                    VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})
+                    (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, pov_policy, hook_policy, pacing_policy)
+                    VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})
                     ON DUPLICATE KEY UPDATE market_channel=VALUES(market_channel), target_chars_min=VALUES(target_chars_min),
                     target_chars_max=VALUES(target_chars_max), chapter_unit_size=VALUES(chapter_unit_size),
+                    pov_policy=VALUES(pov_policy),
                     hook_policy=VALUES(hook_policy), pacing_policy=VALUES(pacing_policy)"""
             else:
                 sql = f"""INSERT INTO production_settings
-                    (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, hook_policy, pacing_policy)
-                    VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})
+                    (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, pov_policy, hook_policy, pacing_policy)
+                    VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})
                     ON CONFLICT(book_id) DO UPDATE SET market_channel=excluded.market_channel,
                     target_chars_min=excluded.target_chars_min, target_chars_max=excluded.target_chars_max,
-                    chapter_unit_size=excluded.chapter_unit_size, hook_policy=excluded.hook_policy,
+                    chapter_unit_size=excluded.chapter_unit_size, pov_policy=excluded.pov_policy, hook_policy=excluded.hook_policy,
                     pacing_policy=excluded.pacing_policy"""
             conn.cursor().execute(
                 sql,
@@ -275,6 +279,7 @@ class Repository:
                     int(target_chars_min),
                     int(target_chars_max),
                     int(chapter_unit_size),
+                    pov_policy.strip(),
                     hook_policy.strip(),
                     pacing_policy.strip(),
                 ),

@@ -32,6 +32,11 @@ class WebSmokeTests(unittest.TestCase):
         self.assertEqual(200, client.get("/books").status_code)
         self.assertEqual(200, client.get("/books/1").status_code)
         self.assertEqual(200, client.get("/books/1/chapters/1").status_code)
+        self.assertEqual(200, client.get("/departments/author").status_code)
+        self.assertEqual(200, client.get("/departments/continuity").status_code)
+        self.assertEqual(200, client.get("/departments/writing").status_code)
+        self.assertEqual(200, client.get("/departments/editorial").status_code)
+        self.assertEqual(200, client.get("/debug").status_code)
 
     def test_create_formal_book_from_web(self):
         client = TestClient(app)

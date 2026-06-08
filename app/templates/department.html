@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="head">
+  <div>
+    <p class="eyebrow">Department Console</p>
+    <h1>
+      {% if department == "continuity" %}连续性工作室{% elif department == "author" %}作者部门{% elif department == "writing" %}写作部门{% elif department == "editorial" %}编辑部门{% else %}部门工作台{% endif %}
+    </h1>
+    {% if book %}<p>{{ book.title }}：{{ book.premise }}</p>{% endif %}
+  </div>
+</section>
+
+{% if not book %}
+<section class="panel"><p>请先在书库创建一本作品。</p></section>
+{% else %}
+{% if department == "continuity" %}
+<section class="panel">
+  <h2>大纲与单元细纲</h2>
+  <form class="form-grid" method="post" action="/books/{{ book.id }}/architecture">
+    <label>卷名<input name="volume_title" value="{{ controls.volume.title }}"></label>
+    <label>卷目标<textarea name="volume_goal" rows="4">{{ controls.volume.goal }}</textarea></label>
+    <label>单元名<input name="arc_title" value="{{ controls.arc.title }}"></label>
+    <label>单元目标<textarea name="arc_goal" rows="4">{{ controls.arc.goal }}</textarea></label>
+    <label>压力轮换<textarea name="arc_pressure" rows="3">{{ controls.arc.pressure }}</textarea></label>
+    <button type="submit">保存连续性设置</button>
+  </form>
+</section>
+{% elif department == "author" %}
+<section class="panel">
+  <h2>文风、人称与市场规则</h2>
+  <form class="form-grid" method="post" action="/books/{{ book.id }}/controls">
+    <label>市场频道<input name="market_channel" value="{{ controls.settings.market_channel }}"></label>
+    <label>最低字数<input type="number" name="target_chars_min" value="{{ controls.settings.target_chars_min }}"></label>
+    <label>最高字数<input type="number" name="target_chars_max" value="{{ controls.settings.target_chars_max }}"></label>
+    <label>单元章节数<input type="number" name="chapter_unit_size" value="{{ controls.settings.chapter_unit_size }}"></label>
+    <label>人称策略
+      <select name="pov_policy">
+        <option value="third_limited" {% if controls.settings.pov_policy == "third_limited" %}selected{% endif %}>第三人称有限视角</option>
+        <option value="first_person" {% if controls.settings.pov_policy == "first_person" %}selected{% endif %}>第一人称主角视角</option>
+        <option value="third_omniscient" {% if controls.settings.pov_policy == "third_omniscient" %}selected{% endif %}>第三人称全知视角</option>
+      </select>
+    </label>
+    <label>文风规则<textarea name="style_rules" rows="6">{{ controls.style.rules }}</textarea></label>
+    <label>钩子/爽点规则<textarea name="hook_policy" rows="4">{{ controls.settings.hook_policy }}</textarea></label>
+    <label>推进节奏规则<textarea name="pacing_policy" rows="4">{{ controls.settings.pacing_policy }}</textarea></label>
+    <button type="submit">保存作者规则</button>
+  </form>
+</section>
+{% elif department == "writing" %}
+<section class="panel">
+  <h2>章节队列</h2>
+  <div class="grid">
+    {% for plan in plans %}
+    <a class="chapter-card" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
+      <strong>第{{ plan.chapter_no }}章 {{ plan.title }}</strong>
+      <span>{{ plan.objective }}</span>
+      <em>{{ plan.pace_limit }}</em>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% elif department == "editorial" %}
+<section class="panel">
+  <h2>审稿硬规则</h2>
+  <div class="kv">
+    <span>目标字数</span><strong>{{ controls.settings.target_chars_min }} - {{ controls.settings.target_chars_max }}</strong>
+    <span>人称策略</span><strong>{{ controls.settings.pov_policy }}</strong>
+    <span>结构检查</span><strong>必须有起因、经过、结果；缺压力、缺行动、缺兑现会退稿。</strong>
+    <span>污染检查</span><strong>正文不得出现部门话术、交付说明、规则说明污染。</strong>
+  </div>
+  <p><a class="text-link" href="/debug?book_id={{ book.id }}">打开调试台测试一段正文</a></p>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}
+

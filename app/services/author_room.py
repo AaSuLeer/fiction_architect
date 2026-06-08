@@ -21,11 +21,17 @@ class AuthorRoom:
             "chapter_no": chapter_no,
             "chapter_title": plan["title"],
             "market_channel": settings.get("market_channel", "中国网文男频爽文"),
-            "target_chars_min": settings.get("target_chars_min", 1800),
-            "target_chars_max": settings.get("target_chars_max", 2600),
+            "target_chars_min": settings.get("target_chars_min", 2200),
+            "target_chars_max": settings.get("target_chars_max", 3200),
             "chapter_unit_size": settings.get("chapter_unit_size", 3),
+            "pov_policy": self._pov_text(settings.get("pov_policy", "third_limited")),
             "style_lock": style["rules"],
             "chapter_objective": plan["objective"],
+            "story_shape": {
+                "cause": "起因：第一屏必须给出具体压力、损失或倒计时，让主角不得不行动。",
+                "process": "经过：主角至少做两次判断/试探/反击，对手或规则必须产生反应。",
+                "result": "结果：本章要有小兑现或阶段性失败，并留下清楚代价或下一章钩子。",
+            },
             "unit_goal": arc["goal"],
             "volume_goal": volume["goal"],
             "pressure_rotation": arc["pressure"],
@@ -43,6 +49,14 @@ class AuthorRoom:
                 "句长自然变化，避免连续同构短句或整段长句。",
                 "细节只服务动作、证据、代价、规则或回收。",
                 "不得把大纲、世界观、人设关系写成说明书。",
+                "不得写成散文片段、设定条目或单纯情绪独白；必须像小说一样有起因、经过、结果。",
             ],
         }
         return self.repo.create_artifact(book_id, chapter_no, "author_brief", "ready", json.dumps(brief, ensure_ascii=False, indent=2))
+
+    def _pov_text(self, pov_policy: str) -> str:
+        if pov_policy == "first_person":
+            return "使用第一人称主角视角，旁白可用“我”，但信息范围不能超过主角认知。"
+        if pov_policy == "third_omniscient":
+            return "使用第三人称全知视角，但不得用说明书式旁白替代剧情推进。"
+        return "使用第三人称有限视角；对话里可以自然出现“我”，旁白信息范围贴近主角。"
