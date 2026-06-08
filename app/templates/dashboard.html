@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="head">
+  <div>
+    <p class="eyebrow">Long-form Webnovel Architecture</p>
+    <h1>长篇小说生产工作台</h1>
+  </div>
+  <form method="post" action="/books/init-demo">
+    <button type="submit">初始化演示书</button>
+  </form>
+</section>
+
+{% if current %}
+<section class="panel">
+  <h2>{{ current.title }}</h2>
+  <p>{{ current.premise }}</p>
+  <div class="grid">
+    {% for plan in plans %}
+    <a class="chapter-card" href="/books/{{ current.id }}/chapters/{{ plan.chapter_no }}">
+      <strong>第{{ plan.chapter_no }}章 {{ plan.title }}</strong>
+      <span>{{ plan.objective }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>事件流</h2>
+  <table>
+    {% for event in events %}
+    <tr><td>{{ event.created_at }}</td><td>{{ event.event_type }}</td><td>{{ event.message }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% else %}
+<section class="panel empty">
+  <h2>还没有书</h2>
+  <p>点击右上角初始化演示书，系统会创建全书、卷、单元和前三章细纲。</p>
+</section>
+{% endif %}
+{% endblock %}
+

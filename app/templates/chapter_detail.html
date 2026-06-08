@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="head">
+  <div>
+    <p class="eyebrow">Chapter Pipeline</p>
+    <h1>第{{ plan.chapter_no }}章 {{ plan.title }}</h1>
+    <p>{{ plan.objective }}</p>
+  </div>
+  <form method="post" action="/books/{{ plan.book_id }}/chapters/{{ plan.chapter_no }}/run">
+    <button type="submit">运行章节管道</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>长篇门禁</h2>
+  <div class="kv">
+    <span>允许揭露</span><strong>{{ plan.allowed_reveals }}</strong>
+    <span>禁止揭露</span><strong>{{ plan.forbidden_reveals }}</strong>
+    <span>节奏限制</span><strong>{{ plan.pace_limit }}</strong>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>部门产物</h2>
+  <div class="grid">
+    {% for name, artifact in artifacts.items() %}
+    <div class="artifact">
+      <strong>{{ name }}</strong>
+      {% if artifact %}
+      <span>{{ artifact.status }}</span>
+      <pre>{{ artifact.content }}</pre>
+      {% else %}
+      <span>未生成</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel reading">
+  <h2>正文</h2>
+  {% if body %}
+  <article>{{ body.body | replace('\n', '<br>') | safe }}</article>
+  {% else %}
+  <p>未有审稿通过的正文。</p>
+  {% endif %}
+</section>
+{% endblock %}
+

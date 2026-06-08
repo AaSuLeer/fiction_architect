@@ -1,0 +1,99 @@
+:root {
+  color-scheme: light;
+  --ink: #202124;
+  --muted: #667085;
+  --line: #d9dee7;
+  --panel: #ffffff;
+  --bg: #f6f7f9;
+  --accent: #0f766e;
+  --accent-2: #b42318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+}
+a { color: inherit; text-decoration: none; }
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 220px;
+  background: #111827;
+  color: white;
+  padding: 24px 18px;
+}
+.brand { display: block; font-weight: 700; margin-bottom: 28px; }
+nav a { display: block; padding: 10px 8px; border-radius: 6px; color: #d1d5db; }
+nav a:hover { background: #1f2937; color: white; }
+.main { margin-left: 220px; padding: 28px; }
+.head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.eyebrow { color: var(--accent); text-transform: uppercase; font-size: 12px; font-weight: 700; }
+h1, h2, p { margin-top: 0; }
+button {
+  border: 0;
+  background: var(--accent);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.chapter-card, .book-row, .artifact {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfe;
+}
+.chapter-card strong, .chapter-card span, .chapter-card em, .book-row strong, .book-row span {
+  display: block;
+  margin-bottom: 8px;
+}
+.chapter-card span, .chapter-card em, .book-row span { color: var(--muted); font-style: normal; }
+.kv {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 10px 14px;
+}
+.kv span { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+td { border-top: 1px solid var(--line); padding: 8px; vertical-align: top; }
+pre {
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 10px;
+}
+.reading article {
+  max-width: 760px;
+  line-height: 1.85;
+  font-size: 17px;
+}
+@media (max-width: 760px) {
+  .sidebar { position: static; width: auto; }
+  .main { margin-left: 0; padding: 16px; }
+  .head { display: block; }
+  .kv { grid-template-columns: 1fr; }
+}

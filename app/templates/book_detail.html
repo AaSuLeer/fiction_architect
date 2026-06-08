@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="head">
+  <div>
+    <p class="eyebrow">Book Architecture</p>
+    <h1>{{ book.title }}</h1>
+    <p>{{ book.premise }}</p>
+  </div>
+</section>
+<section class="panel">
+  <h2>章节细纲</h2>
+  <div class="grid">
+    {% for plan in plans %}
+    <a class="chapter-card" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
+      <strong>第{{ plan.chapter_no }}章 {{ plan.title }}</strong>
+      <span>{{ plan.objective }}</span>
+      <em>{{ plan.pace_limit }}</em>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+<section class="panel">
+  <h2>最近事件</h2>
+  <table>
+    {% for event in events %}
+    <tr><td>{{ event.created_at }}</td><td>{{ event.event_type }}</td><td>{{ event.message }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}
+

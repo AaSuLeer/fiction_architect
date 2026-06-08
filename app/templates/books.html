@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="head">
+  <h1>书库</h1>
+  <form method="post" action="/books/init-demo"><button type="submit">初始化演示书</button></form>
+</section>
+<section class="panel">
+  {% for book in books %}
+  <a class="book-row" href="/books/{{ book.id }}">
+    <strong>{{ book.title }}</strong>
+    <span>{{ book.status }}</span>
+  </a>
+  {% else %}
+  <p>暂无项目。</p>
+  {% endfor %}
+</section>
+{% endblock %}
+
