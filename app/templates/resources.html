@@ -27,7 +27,7 @@
     <h2>{{ "编辑资源" if edit_profile else "新建资源" }}</h2>
     <form method="post" action="/resources/{{ kind }}/save">
       <input type="hidden" name="profile_id" value="{{ edit_profile.id if edit_profile else 0 }}">
-      <label>JSON 配置<textarea name="payload" rows="20">{% if edit_profile %}{{ edit_profile|tojson(indent=2) }}{% elif is_author %}{
+      <label>JSON 配置<textarea name="payload" rows="20">{% if edit_profile %}{{ edit_profile_json }}{% elif is_author %}{
   "name": "新作者",
   "genre": "",
   "pov_preference": "third_limited",

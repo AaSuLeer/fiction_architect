@@ -579,7 +579,9 @@ def resources_page(request: Request, kind: str):
 @app.get("/resources/{kind}/{profile_id}", response_class=HTMLResponse)
 def edit_resource_page(request: Request, kind: str, profile_id: int):
     repo, _ = runtime()
-    return templates.TemplateResponse(request, "resources.html", {"request": request, "kind": kind, "profiles": repo.list_profiles(kind), "edit_profile": json_safe(repo.get_profile(kind, profile_id)), "json_text": ""})
+    edit_profile = json_safe(repo.get_profile(kind, profile_id))
+    edit_profile_json = json.dumps(edit_profile, ensure_ascii=False, indent=2) if edit_profile else ""
+    return templates.TemplateResponse(request, "resources.html", {"request": request, "kind": kind, "profiles": repo.list_profiles(kind), "edit_profile": edit_profile, "edit_profile_json": edit_profile_json, "json_text": ""})
 
 
 @app.post("/resources/{kind}/save")
