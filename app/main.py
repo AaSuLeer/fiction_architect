@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sys
 import tempfile
 import zipfile
@@ -32,6 +33,30 @@ app = FastAPI(title="fiction_architect")
 app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "app" / "static")), name="static")
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_ROOT)), name="uploads")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+
+
+def back_target(path: str) -> str:
+    if path in {"/", "/books"}:
+        return "/"
+    patterns = [
+        (r"^/books/(\d+)/chapter-batches/new$", r"/books/\1"),
+        (r"^/books/(\d+)/chapter-batches/\d+$", r"/books/\1/chapters"),
+        (r"^/books/(\d+)/chapters/\d+$", r"/books/\1/chapters"),
+        (r"^/books/(\d+)/(setup|outline|author|editor|chapters|continuity)$", r"/books/\1"),
+        (r"^/books/(\d+)/continuity/(atoms|drift|logs)$", r"/books/\1/continuity"),
+        (r"^/resources/(authors|editors)/\d+$", r"/resources/\1"),
+        (r"^/resources/(authors|editors)$", r"/"),
+        (r"^/archive$", r"/"),
+        (r"^/exports$", r"/"),
+    ]
+    for pattern, target in patterns:
+        if re.match(pattern, path):
+            return re.sub(pattern, target, path)
+    parts = path.rstrip("/").split("/")
+    return "/".join(parts[:-1]) or "/"
+
+
+templates.env.globals["back_target"] = back_target
 
 
 @app.middleware("http")
@@ -73,6 +98,7 @@ def _book_context(repo, book_id: int, request: Request, **extra: Any) -> dict[st
         "record": repo.get_book_record(book_id) or {},
         "menu": _menu(book_id),
         "pov_labels": POV_LABELS,
+        "back_href": extra.pop("back_href", back_target(request.url.path)),
         **extra,
     }
 
@@ -455,7 +481,8 @@ def chapter_detail(request: Request, book_id: int, chapter_no: int):
     plan = repo.get_chapter_plan_row(book_id, chapter_no)
     if plan is None:
         return render_error(request, "章节卡片不存在。", 404)
-    context = _book_context(repo, book_id, request, plan=plan, body=repo.get_chapter_body(book_id, chapter_no), artifacts=repo.list_artifacts(book_id, chapter_no), task=repo.get_rewrite_task(book_id, chapter_no))
+    back_href = f"/books/{book_id}/chapter-batches/{plan['batch_id']}" if plan.get("batch_id") else f"/books/{book_id}/chapters"
+    context = _book_context(repo, book_id, request, back_href=back_href, plan=plan, body=repo.get_chapter_body(book_id, chapter_no), artifacts=repo.list_artifacts(book_id, chapter_no), task=repo.get_rewrite_task(book_id, chapter_no))
     return templates.TemplateResponse(request, "chapter_detail.html", context)
 
 

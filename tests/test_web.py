@@ -96,6 +96,19 @@ class WebSmokeTests(unittest.TestCase):
         self.assertEqual(400, response.status_code)
         self.assertIn("最多只能新建 20 章".encode("utf-8"), response.content)
 
+    def test_back_button_uses_stable_href_and_batch_planning_has_progress(self):
+        client = TestClient(app)
+        book_id = self.create_book(client)
+        new_page = client.get(f"/books/{book_id}/chapter-batches/new")
+        self.assertIn(b"data-progress-form", new_page.content)
+        self.assertIn("调用规划 Agent".encode("utf-8"), new_page.content)
+        response = client.post(f"/books/{book_id}/chapter-batches/new", data={"chapter_count": "1"}, follow_redirects=False)
+        batch_id = response.headers["location"].split("/")[-1]
+        detail = client.get(f"/books/{book_id}/chapters/1")
+        self.assertIn(f'href="/books/{book_id}/chapter-batches/{batch_id}"'.encode("utf-8"), detail.content)
+        batch = client.get(f"/books/{book_id}/chapter-batches/{batch_id}")
+        self.assertIn(f'href="/books/{book_id}/chapters"'.encode("utf-8"), batch.content)
+
     def test_save_chapter_plan_redirects_to_batch_and_shows_update(self):
         client = TestClient(app)
         book_id = self.create_book(client)

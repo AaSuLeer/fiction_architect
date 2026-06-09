@@ -37,7 +37,7 @@ class LlmConfigTests(unittest.TestCase):
 
     def test_legacy_zhipu_names_still_fall_back(self):
         os.environ.clear()
-        os.environ.update({"LLM_API_KEY": "", "ZHIPUAI_API_KEY": "old-key", "ZHIPUAI_MODEL": "legacy-model", "LLM_MODE": ""})
+        os.environ.update({"LLM_API_KEY": "", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "old-key", "ZHIPUAI_MODEL": "legacy-model", "LLM_MODE": ""})
         settings = get_settings()
         self.assertEqual("old-key", settings.llm_api_key)
         self.assertEqual("legacy-model", settings.llm_default_model)

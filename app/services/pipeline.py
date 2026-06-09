@@ -51,6 +51,7 @@ class Pipeline:
 
     def plan_batch(self, book_id: int, batch_id: int) -> list[dict[str, object]]:
         try:
+            self.repo.update_batch_status(batch_id, "planning_running", "正在调用规划 Agent 生成章节细纲。", "")
             return self.planner.plan_chapter_batch(book_id, batch_id)
         except Exception as exc:
             self.repo.update_batch_status(batch_id, "planning_failed", "章节规划失败，请重试或手写细纲。", f"{type(exc).__name__}: {exc}")

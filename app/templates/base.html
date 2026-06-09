@@ -23,7 +23,7 @@
   </header>
   <main class="main">
     {% if request.url.path != "/" and request.url.path != "/books" %}
-    <button class="back-button" type="button" onclick="history.length > 1 ? history.back() : location.href='/'">返回</button>
+    <a class="back-button" href="{{ back_href|default(back_target(request.url.path)) }}">返回</a>
     {% endif %}
     {% block content %}{% endblock %}
   </main>

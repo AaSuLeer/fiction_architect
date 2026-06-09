@@ -9,7 +9,8 @@ document.addEventListener("DOMContentLoaded", () => {
         button.textContent = "正在生成...";
       }
       if (panel) panel.hidden = false;
-      const stages = [
+      const customStages = form.dataset.progressStages;
+      const stages = customStages ? customStages.split("|") : [
         "整理本章写作任务",
         "检索连续性资料",
         "调用大模型写作",

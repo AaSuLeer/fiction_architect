@@ -265,7 +265,7 @@ SCHEMA_TABLES = [
         chapter_no INTEGER,
         artifact_type VARCHAR(100) NOT NULL,
         status VARCHAR(50) NOT NULL,
-        content TEXT NOT NULL,
+        content LONGTEXT NOT NULL,
         visibility VARCHAR(50) NOT NULL DEFAULT 'internal',
         expires_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -277,7 +277,7 @@ SCHEMA_TABLES = [
         book_id INTEGER NOT NULL,
         chapter_no INTEGER NOT NULL,
         title VARCHAR(255) NOT NULL,
-        body TEXT NOT NULL,
+        body LONGTEXT NOT NULL,
         status VARCHAR(50) NOT NULL DEFAULT 'drafted',
         export_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -321,7 +321,7 @@ SCHEMA_TABLES = [
         token_budget INTEGER NOT NULL DEFAULT 1200,
         retrieval_count INTEGER NOT NULL DEFAULT 0,
         last_used_at TIMESTAMP NULL,
-        content TEXT NOT NULL,
+        content LONGTEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -331,7 +331,7 @@ SCHEMA_TABLES = [
         book_id INTEGER NOT NULL,
         chapter_no INTEGER,
         atom_type VARCHAR(100) NOT NULL,
-        content TEXT NOT NULL,
+        content LONGTEXT NOT NULL,
         status VARCHAR(50) NOT NULL DEFAULT 'candidate',
         visible_after_chapter INTEGER NOT NULL DEFAULT 0,
         source_ref VARCHAR(100) NOT NULL,
@@ -361,7 +361,7 @@ SCHEMA_TABLES = [
         book_id INTEGER NOT NULL,
         chapter_no INTEGER,
         status VARCHAR(50) NOT NULL DEFAULT 'open',
-        content TEXT NOT NULL,
+        content LONGTEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -576,6 +576,7 @@ def _ensure_schema_columns(db: Database, conn: Any) -> None:
                 cur.execute(f"SHOW COLUMNS FROM {table} LIKE %s", (column,))
                 if cur.fetchone() is None:
                     cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {db.adapt_sql(definition)}")
+        _ensure_mysql_longtext_columns(cur)
         return
     for table, columns in expected.items():
         cur.execute(f"PRAGMA table_info({table})")
@@ -583,6 +584,25 @@ def _ensure_schema_columns(db: Database, conn: Any) -> None:
         for column, definition in columns.items():
             if column not in existing:
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _ensure_mysql_longtext_columns(cur: Any) -> None:
+    longtext_columns = {
+        "artifacts": ["content"],
+        "chapter_bodies": ["body"],
+        "continuity_memories": ["content"],
+        "continuity_atoms": ["content"],
+        "drift_reports": ["content"],
+    }
+    for table, columns in longtext_columns.items():
+        for column in columns:
+            cur.execute(f"SHOW COLUMNS FROM {table} LIKE %s", (column,))
+            row = cur.fetchone()
+            if not row:
+                continue
+            column_type = str(row.get("Type") if isinstance(row, dict) else row[1]).lower()
+            if column_type != "longtext":
+                cur.execute(f"ALTER TABLE {table} MODIFY COLUMN {column} LONGTEXT NOT NULL")
 
 
 def _remove_sample_books(db: Database, conn: Any) -> None:

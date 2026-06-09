@@ -7,8 +7,13 @@
   <p class="muted">系统优先使用当前未完成单元的推荐章节数；你可以在 1-20 章内调整。</p>
 </section>
 
+<section class="progress-panel" data-progress-panel hidden>
+  <div class="progress-bar"><span data-progress-bar></span></div>
+  <p data-progress-text>正在准备四级大纲资料...</p>
+</section>
+
 {% set selected = current_unit or (arcs[0] if arcs else None) %}
-<form class="panel narrow-form" method="post" action="/books/{{ book.id }}/chapter-batches/new">
+<form class="panel narrow-form" method="post" action="/books/{{ book.id }}/chapter-batches/new" data-progress-form data-progress-stages="读取全书与卷纲|分析当前单元剧情|调用规划 Agent 生成章节细纲|写入章节卡片|打开批次确认页">
   <label>选择单元
     <select name="arc_id">
       {% for arc in arcs %}
