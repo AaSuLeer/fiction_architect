@@ -25,30 +25,38 @@ class LlmConfigTests(unittest.TestCase):
                 "LLM_WRITER_MODEL": "writer-model",
                 "LLM_EDITOR_MODEL": "editor-model",
                 "LLM_MODE": "",
+                "SQLITE_PATH": "data/test_llm_config.db",
                 "ZHIPUAI_API_KEY": "",
             }
         )
         settings = get_settings()
         self.assertEqual("new-key", settings.llm_api_key)
-        self.assertEqual("openai", settings.llm_mode)
+        self.assertEqual("compatible", settings.llm_mode)
         self.assertEqual("qwen-max", settings.llm_outline_model)
         self.assertEqual("writer-model", settings.llm_writer_model)
         self.assertEqual("editor-model", settings.llm_editor_model)
 
     def test_legacy_zhipu_names_still_fall_back(self):
         os.environ.clear()
-        os.environ.update({"LLM_API_KEY": "", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "old-key", "ZHIPUAI_MODEL": "legacy-model", "LLM_MODE": ""})
+        os.environ.update({"LLM_API_KEY": "", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "old-key", "ZHIPUAI_MODEL": "legacy-model", "LLM_MODE": "", "SQLITE_PATH": "data/test_llm_config.db"})
         settings = get_settings()
         self.assertEqual("old-key", settings.llm_api_key)
         self.assertEqual("legacy-model", settings.llm_default_model)
-        self.assertEqual("openai", settings.llm_mode)
+        self.assertEqual("compatible", settings.llm_mode)
 
     def test_model_name_in_llm_mode_is_treated_as_compatible_model(self):
         os.environ.clear()
-        os.environ.update({"LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "", "ZHIPUAI_MODEL": "", "LLM_MODE": "qwen-plus-2025-12-01"})
+        os.environ.update({"LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "", "ZHIPUAI_MODEL": "", "LLM_MODE": "qwen-plus-2025-12-01", "SQLITE_PATH": "data/test_llm_config.db"})
         settings = get_settings()
-        self.assertEqual("openai", settings.llm_mode)
+        self.assertEqual("compatible", settings.llm_mode)
         self.assertEqual("qwen-plus-2025-12-01", settings.llm_default_model)
+
+    def test_provider_alias_in_llm_mode_keeps_generic_compatible_mode(self):
+        os.environ.clear()
+        os.environ.update({"LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "qwen-plus", "LLM_MODE": "qwen", "SQLITE_PATH": "data/test_llm_config.db"})
+        settings = get_settings()
+        self.assertEqual("compatible", settings.llm_mode)
+        self.assertEqual("qwen-plus", settings.llm_default_model)
 
 
 if __name__ == "__main__":

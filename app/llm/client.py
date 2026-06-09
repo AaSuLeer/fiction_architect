@@ -17,6 +17,10 @@ class LlmClient:
         if self.settings.llm_mode == "mock" or not self.settings.llm_api_key:
             return self.mock_completion(user_prompt)
         selected_model = model or self._model_for_role(role)
+        if not self.settings.llm_base_url.strip():
+            raise RuntimeError("LLM_BASE_URL is not configured for compatible model calls.")
+        if not selected_model.strip():
+            raise RuntimeError("LLM model is not configured. Set LLM_DEFAULT_MODEL or the role-specific model in .env.")
         payload = {
             "model": selected_model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],

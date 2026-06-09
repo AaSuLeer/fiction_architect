@@ -50,9 +50,14 @@ def get_settings() -> Settings:
     load_env()
     llm_api_key = os.getenv("LLM_API_KEY") or os.getenv("ZHIPUAI_API_KEY", "")
     raw_mode = (os.getenv("LLM_MODE") or "").strip()
-    mode_as_model = raw_mode and raw_mode.lower() not in {"mock", "openai", "compatible", "zhipu"}
-    default_model = os.getenv("LLM_DEFAULT_MODEL") or os.getenv("ZHIPUAI_MODEL") or (raw_mode if mode_as_model else "glm-4.5")
-    llm_mode = "openai" if mode_as_model else (raw_mode or ("openai" if llm_api_key else "mock")).lower()
+    raw_mode_key = raw_mode.lower()
+    known_modes = {"mock", "compatible", "qwen", "dashscope", "zhipu", "openai"}
+    mode_as_model = bool(raw_mode and raw_mode_key not in known_modes)
+    default_model = os.getenv("LLM_DEFAULT_MODEL") or os.getenv("ZHIPUAI_MODEL") or (raw_mode if mode_as_model else "")
+    if raw_mode_key == "mock" or not llm_api_key:
+        llm_mode = "mock"
+    else:
+        llm_mode = "compatible"
     sqlite_value = os.getenv("SQLITE_PATH", "").strip()
     if sqlite_value:
         sqlite_path = Path(sqlite_value)
@@ -69,9 +74,9 @@ def get_settings() -> Settings:
         mysql_password=os.getenv("MYSQL_PASSWORD", ""),
         mysql_database=os.getenv("MYSQL_DATABASE", "fiction_architect"),
         llm_api_key=llm_api_key,
-        llm_base_url=os.getenv("LLM_BASE_URL") or os.getenv("ZHIPUAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
+        llm_base_url=os.getenv("LLM_BASE_URL") or os.getenv("ZHIPUAI_BASE_URL", ""),
         llm_default_model=default_model,
-        llm_outline_model=os.getenv("LLM_OUTLINE_MODEL", "qwen-max"),
+        llm_outline_model=os.getenv("LLM_OUTLINE_MODEL") or default_model,
         llm_writer_model=os.getenv("LLM_WRITER_MODEL", default_model),
         llm_editor_model=os.getenv("LLM_EDITOR_MODEL", default_model),
         llm_timeout=int(os.getenv("LLM_TIMEOUT") or os.getenv("ZHIPUAI_TIMEOUT", "60")),
