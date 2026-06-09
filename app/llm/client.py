@@ -5,6 +5,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 
 from app.config import Settings
 
@@ -21,13 +22,14 @@ class LlmClient:
             raise RuntimeError("LLM_BASE_URL is not configured for compatible model calls.")
         if not selected_model.strip():
             raise RuntimeError("LLM model is not configured. Set LLM_DEFAULT_MODEL or the role-specific model in .env.")
+        request_url = self._chat_completions_url(self.settings.llm_base_url)
         payload = {
             "model": selected_model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             "temperature": 0.82,
         }
         request = urllib.request.Request(
-            self.settings.llm_base_url,
+            request_url,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             headers={"Authorization": f"Bearer {self.settings.llm_api_key}", "Content-Type": "application/json"},
             method="POST",
@@ -64,6 +66,15 @@ class LlmClient:
         if role == "editor":
             return self.settings.llm_editor_model
         return self.settings.llm_default_model
+
+    def _chat_completions_url(self, base_url: str) -> str:
+        url = base_url.strip().rstrip("/")
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            raise RuntimeError("LLM_BASE_URL must be an absolute URL.")
+        if parsed.path.rstrip("/").endswith("/chat/completions"):
+            return url
+        return f"{url}/chat/completions"
 
     def mock_completion(self, user_prompt: str) -> str:
         if "本章写作任务" in user_prompt and "连续性资料" in user_prompt:

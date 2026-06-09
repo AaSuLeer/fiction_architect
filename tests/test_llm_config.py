@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import unittest
+from pathlib import Path
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.llm.client import LlmClient
 
 
 class LlmConfigTests(unittest.TestCase):
@@ -57,6 +59,41 @@ class LlmConfigTests(unittest.TestCase):
         settings = get_settings()
         self.assertEqual("compatible", settings.llm_mode)
         self.assertEqual("qwen-plus", settings.llm_default_model)
+
+    def test_client_accepts_sdk_style_base_url(self):
+        client = LlmClient(self._settings_with_url("https://dashscope.aliyuncs.com/compatible-mode/v1"))
+        self.assertEqual(
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            client._chat_completions_url(client.settings.llm_base_url),
+        )
+
+    def test_client_keeps_full_chat_completions_url(self):
+        client = LlmClient(self._settings_with_url("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"))
+        self.assertEqual(
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            client._chat_completions_url(client.settings.llm_base_url),
+        )
+
+    def _settings_with_url(self, url: str) -> Settings:
+        return Settings(
+            db_backend="sqlite",
+            sqlite_path=Path("data/test_llm_config.db"),
+            mysql_host="127.0.0.1",
+            mysql_port=3306,
+            mysql_user="",
+            mysql_password="",
+            mysql_database="fiction_architect",
+            llm_api_key="key",
+            llm_base_url=url,
+            llm_default_model="qwen-plus",
+            llm_outline_model="qwen-max",
+            llm_writer_model="qwen-plus",
+            llm_editor_model="qwen-plus",
+            llm_timeout=60,
+            llm_mode="compatible",
+            app_host="127.0.0.1",
+            app_port=8010,
+        )
 
 
 if __name__ == "__main__":
