@@ -612,9 +612,13 @@ def import_resource(request: Request, kind: str, json_text: str = Form(...)):
 @app.get("/resources/{kind}/export/json")
 def export_resources(kind: str):
     repo, _ = runtime()
-    path = EXPORT_ROOT / f"{kind}_resources.json"
-    path.write_text(json.dumps(json_safe(repo.list_profiles(kind)), ensure_ascii=False, indent=2), encoding="utf-8")
-    return FileResponse(path, filename=path.name, media_type="application/json")
+    content = json.dumps(json_safe(repo.list_profiles(kind)), ensure_ascii=False, indent=2)
+    filename = f"{kind}_resources.json"
+    return Response(
+        content=content,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/debug", response_class=HTMLResponse)
