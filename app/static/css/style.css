@@ -307,6 +307,10 @@ textarea {
   color: var(--muted);
 }
 .chapter-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -370,6 +374,19 @@ pre {
 }
 .danger-zone button {
   background: var(--danger);
+}
+.inline-danger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.inline-danger input {
+  width: 86px;
+}
+.inline-danger button {
+  background: var(--danger);
+  padding: 8px 10px;
 }
 
 @media (max-width: 820px) {

@@ -1,34 +1,76 @@
 {% extends "base.html" %}
-{% block title %}大纲设置 - {{ book.title }}{% endblock %}
+{% block title %}卷纲 - {{ book.title }}{% endblock %}
 {% block content %}
 <section class="page-head">
-  <p class="eyebrow">大纲设置</p>
+  <p class="eyebrow">卷纲</p>
   <h1>{{ book.title }}</h1>
-  <p class="muted">长期大纲在这里维护；章节生成前只确认章节细纲，不频繁打扰全书设定。</p>
+  <p class="muted">四级框架：全书结构化大纲 -> 卷纲 -> 单元纲 -> 章节细纲。这里维护卷和单元，章节细纲从批次卡片进入。</p>
+</section>
+
+<section class="panel">
+  <h2>全书结构化大纲</h2>
+  <p><strong>预估全书字数：</strong>{{ record.estimated_total_words or 1000000 }}</p>
+  <pre>{{ record.book_outline or record.imported_outline or record.story_mainline or "尚未填写全书结构化大纲。" }}</pre>
 </section>
 
 <section class="two-col">
-  <form class="panel" method="post" action="/books/{{ book.id }}/architecture">
-    <h2>卷与单元</h2>
-    {% set volume = controls.volume or {} %}
-    {% set arc = controls.arc or {} %}
-    <label>当前卷名<input name="volume_title" value="{{ volume.title or '' }}"></label>
-    <label>卷目标<textarea name="volume_goal" rows="5">{{ volume.goal or '' }}</textarea></label>
-    <label>当前单元名<input name="arc_title" value="{{ arc.title or '' }}"></label>
-    <label>单元目标<textarea name="arc_goal" rows="5">{{ arc.goal or '' }}</textarea></label>
-    <label>单元压力<textarea name="arc_pressure" rows="4">{{ arc.pressure or '' }}</textarea></label>
-    <button class="primary-action" type="submit">保存大纲结构</button>
-  </form>
-  <div class="panel">
-    <h2>当前章节规划</h2>
-    <div class="compact-list">
-      {% for plan in plans[:30] %}
-      <a class="list-row" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
-        <span>第 {{ plan.chapter_no }} 章：{{ plan.title }}</span>
-        <small>{{ plan.status }}</small>
-      </a>
-      {% endfor %}
-    </div>
+  <div>
+    <h2>卷纲</h2>
+    {% for volume in volumes %}
+    <form class="panel wide-form" method="post" action="/books/{{ book.id }}/volumes/{{ volume.id }}">
+      <div class="form-grid">
+        <label>卷名<input name="title" value="{{ volume.title }}"></label>
+        <label>预计字数<input type="number" name="estimated_words" value="{{ volume.estimated_words or 200000 }}"></label>
+        <label>开始章节<input type="number" name="start_chapter" value="{{ volume.start_chapter }}"></label>
+        <label>结束章节<input type="number" name="end_chapter" value="{{ volume.end_chapter }}"></label>
+      </div>
+      <label>卷目标<textarea name="goal" rows="4">{{ volume.goal }}</textarea></label>
+      <label>核心矛盾<textarea name="core_conflict" rows="3">{{ volume.core_conflict or '' }}</textarea></label>
+      <label>阶段胜负<textarea name="stage_payoff" rows="3">{{ volume.stage_payoff or '' }}</textarea></label>
+      <label>人物推进<textarea name="character_progression" rows="3">{{ volume.character_progression or '' }}</textarea></label>
+      <label>伏笔计划<textarea name="foreshadowing_plan" rows="3">{{ volume.foreshadowing_plan or '' }}</textarea></label>
+      <button type="submit">保存卷纲</button>
+    </form>
+    {% else %}
+    <div class="panel"><p class="muted">暂无卷纲。</p></div>
+    {% endfor %}
   </div>
+  <div>
+    <h2>单元纲</h2>
+    {% for arc in arcs %}
+    <form class="panel wide-form" method="post" action="/books/{{ book.id }}/arcs/{{ arc.id }}">
+      <div class="form-grid">
+        <label>单元名<input name="title" value="{{ arc.title }}"></label>
+        <label>推荐章节数<input type="number" name="recommended_chapters" value="{{ arc.recommended_chapters or 5 }}" min="1" max="20"></label>
+        <label>开始章节<input type="number" name="start_chapter" value="{{ arc.start_chapter }}"></label>
+        <label>结束章节<input type="number" name="end_chapter" value="{{ arc.end_chapter }}"></label>
+        <label>状态<input name="status" value="{{ arc.status or 'planned' }}"></label>
+      </div>
+      <label>单元目标<textarea name="goal" rows="3">{{ arc.goal }}</textarea></label>
+      <label>压力来源<textarea name="pressure" rows="3">{{ arc.pressure }}</textarea></label>
+      <label>起因<textarea name="cause" rows="3">{{ arc.cause or '' }}</textarea></label>
+      <label>经过<textarea name="process" rows="3">{{ arc.process or '' }}</textarea></label>
+      <label>结果<textarea name="result" rows="3">{{ arc.result or '' }}</textarea></label>
+      <label>爽点/反转<textarea name="payoff" rows="3">{{ arc.payoff or '' }}</textarea></label>
+      <label>人物变化<textarea name="character_change" rows="3">{{ arc.character_change or '' }}</textarea></label>
+      <label>伏笔推进<textarea name="foreshadowing_progress" rows="3">{{ arc.foreshadowing_progress or '' }}</textarea></label>
+      <button type="submit">保存单元纲</button>
+    </form>
+    {% else %}
+    <div class="panel"><p class="muted">暂无单元纲。</p></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>章节细纲</h2>
+  {% for plan in plans %}
+  <a class="list-row" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
+    <span>第 {{ plan.chapter_no }} 章：{{ plan.title }} · {{ plan.volume_title or "未归卷" }} / {{ plan.arc_title or "未归单元" }}</span>
+    <small>{{ plan.status }}</small>
+  </a>
+  {% else %}
+  <p class="muted">还没有章节细纲。请进入“新建章节”，按当前单元推荐章节数生成章节卡片。</p>
+  {% endfor %}
 </section>
 {% endblock %}

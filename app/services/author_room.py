@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.storage.repository import POV_LABELS, Repository
+from app.storage.repository import POV_LABELS, Repository, json_safe
 
 
 class AuthorRoom:
@@ -13,6 +13,8 @@ class AuthorRoom:
         ctx = self.repo.get_architecture_context(book_id, chapter_no)
         book = ctx["book"]
         plan = ctx["plan"]
+        volume = ctx["volume"] or {}
+        unit = ctx["arc"] or {}
         author = ctx.get("author_profile") or {}
         settings = ctx["settings"]
         pov = book.get("pov_policy") or settings.get("pov_policy") or "third_limited"
@@ -22,6 +24,7 @@ class AuthorRoom:
             "chapter_title": plan["title"],
             "target_chars": plan.get("target_chars") or settings.get("target_chars_max", 2600),
             "pov": POV_LABELS.get(pov, "第三人称有限视角"),
+            "priority": "全书结构化大纲 > 当前卷纲 > 当前单元纲 > 本章细纲 > 连续性记忆",
             "author_style": {
                 "name": author.get("name", "默认作者"),
                 "sentence_rhythm": author.get("sentence_rhythm", ""),
@@ -30,12 +33,29 @@ class AuthorRoom:
                 "forbidden_items": author.get("forbidden_items", ""),
                 "prompt_rules": author.get("prompt_rules", ""),
             },
-            "book_setup": {
-                "genre": book.get("genre", ""),
-                "market_channel": book.get("market_channel", ""),
-                "target_reader": book.get("target_reader", ""),
-                "story_mainline": book.get("story_mainline", ""),
-                "worldbuilding": "仅作写作约束，不得说明书式写入正文。",
+            "book_outline": {
+                "estimated_total_words": book.get("estimated_total_words", 1000000),
+                "outline": book.get("book_outline") or book.get("imported_outline") or book.get("story_mainline") or "",
+                "worldbuilding_rule": "只作约束，不得说明书式写入正文。",
+            },
+            "volume_outline": {
+                "title": volume.get("title", ""),
+                "goal": volume.get("goal", ""),
+                "core_conflict": volume.get("core_conflict", ""),
+                "stage_payoff": volume.get("stage_payoff", ""),
+                "character_progression": volume.get("character_progression", ""),
+                "foreshadowing_plan": volume.get("foreshadowing_plan", ""),
+            },
+            "unit_outline": {
+                "title": unit.get("title", ""),
+                "goal": unit.get("goal", ""),
+                "cause": unit.get("cause", ""),
+                "process": unit.get("process", ""),
+                "result": unit.get("result", ""),
+                "payoff": unit.get("payoff", ""),
+                "character_change": unit.get("character_change", ""),
+                "foreshadowing_progress": unit.get("foreshadowing_progress", ""),
+                "recommended_chapters": unit.get("recommended_chapters", 5),
             },
             "chapter_control": {
                 "objective": plan["objective"],
@@ -46,4 +66,4 @@ class AuthorRoom:
             },
             "story_shape": "必须有起因、经过、结果；爽点来自行动和局势变化；结尾留下代价或新钩子。",
         }
-        return self.repo.create_artifact(book_id, chapter_no, "author_brief", "ready", json.dumps(brief, ensure_ascii=False, indent=2))
+        return self.repo.create_artifact(book_id, chapter_no, "author_brief", "ready", json.dumps(json_safe(brief), ensure_ascii=False, indent=2))

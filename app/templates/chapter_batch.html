@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">章节批次</p>
     <h1>第 {{ batch.start_chapter }}-{{ batch.end_chapter }} 章</h1>
-    <p class="muted">点击卡片修改标题、细纲、目标、推进限制、梗概和目标字数。确认后点“生成正文”。</p>
+    <p class="muted">{{ batch.volume_title or "未归卷" }} / {{ batch.arc_title or "未归单元" }} · 推荐 {{ batch.recommended_count }} 章，实际 {{ batch.author_count }} 章。</p>
   </div>
   <form method="post" action="/books/{{ book.id }}/chapter-batches/{{ batch.id }}/generate" data-progress-form>
     <button class="primary-action" type="submit">生成正文</button>
@@ -14,28 +14,43 @@
 
 <section class="progress-panel" data-progress-panel hidden>
   <div class="progress-bar"><span data-progress-bar></span></div>
-  <p data-progress-text>正在准备连续性资料...</p>
+  <p data-progress-text>正在准备四级大纲资料...</p>
 </section>
 
 <section class="batch-status panel">
   <strong>当前状态：{{ batch.status }}</strong>
-  <span>{{ batch.current_stage or batch.error_message or "等待生成" }}</span>
+  <span>{{ batch.progress_message or batch.error or "等待生成" }}</span>
+  {% if batch.error %}
+  <p class="muted">失败原因：{{ batch.error }}</p>
+  {% endif %}
 </section>
 
 <section class="chapter-card-grid">
   {% for plan in plans %}
   {% set body = bodies.get(plan.chapter_no) %}
-  <a class="chapter-card" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
+  {% set error = artifacts_by_chapter.get(plan.chapter_no) if artifacts_by_chapter else None %}
+  <article class="chapter-card">
     <div class="chapter-card-head">
       <h2>第 {{ plan.chapter_no }} 章：{{ plan.title }}</h2>
-      <span>{{ body.status if body else plan.status }}</span>
+      <span>
+        {% if body and body.status == "editor_approved" %}待人工确认
+        {% elif body and body.status == "human_confirmed" %}已人工确认
+        {% elif body and body.status == "exported" %}已导出
+        {% elif error %}生成失败
+        {% else %}未生成{% endif %}
+      </span>
     </div>
+    <p class="muted">{{ plan.volume_title or "未归卷" }} / {{ plan.arc_title or "未归单元" }}</p>
     <p class="scroll-line">{{ plan.plot_summary or plan.objective }}</p>
     <div class="chapter-card-foot">
       <span>目标 {{ plan.target_chars or 2600 }} 字</span>
-      <span>进入详情</span>
+      <a href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">进入详情</a>
     </div>
-  </a>
+    <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/delete" class="danger-zone">
+      <input name="confirm" placeholder="输入 DELETE 删除">
+      <button type="submit">删除章节</button>
+    </form>
+  </article>
   {% endfor %}
 </section>
 {% endblock %}

@@ -4,7 +4,7 @@
 <section class="page-head">
   <p class="eyebrow">开书向导</p>
   <h1>建立一本可长期维护的作品</h1>
-  <p class="muted">这些信息是整本书的持久控制项，人称、平台、目标字数不会在每章里反复修改。</p>
+  <p class="muted">开书时确立全书结构化大纲和预估全书字数，系统会据此默认拆分卷纲和单元纲；不会再预置固定三章。</p>
 </section>
 
 <form class="panel wide-form" method="post" action="/books/create">
@@ -20,16 +20,18 @@
         {% endfor %}
       </select>
     </label>
+    <label>预估全书字数<input type="number" name="estimated_total_words" value="1000000" min="100000" step="10000"></label>
     <label>单章最低字数<input type="number" name="target_chars_min" value="2200" min="800"></label>
     <label>单章最高字数<input type="number" name="target_chars_max" value="3200" min="1200"></label>
     <label>核心卖点<input name="premise" placeholder="一句话说明读者为什么追下去"></label>
   </div>
   <label>全书主线<textarea name="story_mainline" rows="4" placeholder="主角长期目标、核心矛盾、阶段性胜负结构"></textarea></label>
+  <label>全书结构化大纲<textarea name="book_outline" rows="8" placeholder="这是最高层长期生产大纲：主线、卷级阶段、人物弧光、核心伏笔、结局方向。"></textarea></label>
   <label>世界观设定<textarea name="worldbuilding" rows="5" placeholder="只写硬规则和限制，不写说明书式正文"></textarea></label>
   <label>主要人物（每行一个：姓名：设定 + 小传）<textarea name="characters_text" rows="6" placeholder="林彻：落榜少年，擅长拆解规则，害怕牵连妹妹..."></textarea></label>
-  <label>已有大纲导入<textarea name="imported_outline" rows="7" placeholder="可粘贴你已有的大纲、卷纲或剧情草案"></textarea></label>
+  <label>旧资料/参考草案（可选）<textarea name="imported_outline" rows="5" placeholder="可粘贴已有草案，系统不会把它当作正式锁定书纲覆盖你的全书结构化大纲。"></textarea></label>
   <div class="form-actions">
-    <button class="primary-action" type="submit">生成基础设定并进入确认</button>
+    <button class="primary-action" type="submit">生成卷纲与单元纲</button>
   </div>
 </form>
 {% endblock %}

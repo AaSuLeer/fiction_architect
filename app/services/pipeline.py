@@ -85,12 +85,12 @@ class Pipeline:
                     if result.get("status") == "approved":
                         break
             results.append(result)
-        failed = [r for r in results if r.get("status") not in {"approved"}]
-        self.repo.update_batch_status(batch_id, "manual_required" if failed else "editor_approved", "生成完成，等待人工确认正文。" if not failed else "部分章节需要人工处理。")
+        failed = [r for r in results if r.get("status") != "approved"]
+        self.repo.update_batch_status(batch_id, "manual_required" if failed else "editor_approved", "部分章节需要人工处理。" if failed else "生成完成，等待人工确认正文。")
         return results
 
     def generate_next_three(self, book_id: int) -> list[dict[str, object]]:
-        batch_id = self.repo.create_chapter_batch(book_id, 3)
+        batch_id = self.repo.create_chapter_batch(book_id)
         return self.generate_batch(book_id, batch_id)
 
     def manual_approve(self, book_id: int, chapter_no: int) -> dict[str, object]:

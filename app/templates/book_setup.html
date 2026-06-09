@@ -4,7 +4,22 @@
 <section class="page-head">
   <p class="eyebrow">开书设定</p>
   <h1>{{ book.title }}</h1>
-  {% if created %}<p class="notice">基础设定已生成。请人工确认后再继续新建章节。</p>{% endif %}
+  {% if created %}<p class="notice">已生成卷纲与单元纲，未创建固定三章。请确认全书结构化大纲后继续。</p>{% endif %}
+</section>
+
+{% set locked = record.outline_locked|int == 1 %}
+<section class="panel">
+  <h2>全书大纲状态</h2>
+  <p class="muted">当前状态：{% if locked %}已锁定，普通流程只读{% else %}可编辑，确认后锁定{% endif %}</p>
+  {% if locked %}
+  <form method="post" action="/books/{{ book.id }}/setup/unlock-outline">
+    <button type="submit">解锁修订全书大纲</button>
+  </form>
+  {% else %}
+  <form method="post" action="/books/{{ book.id }}/setup/lock-outline">
+    <button class="primary-action" type="submit">确认并锁定全书大纲</button>
+  </form>
+  {% endif %}
 </section>
 
 <form class="panel wide-form" method="post" action="/books/{{ book.id }}/setup">
@@ -20,15 +35,17 @@
         {% endfor %}
       </select>
     </label>
+    <label>预估全书字数<input type="number" name="estimated_total_words" value="{{ record.estimated_total_words or 1000000 }}" min="100000" step="10000" {% if locked %}readonly{% endif %}></label>
     <label>单章最低字数<input type="number" name="target_chars_min" value="{{ record.target_chars_min or 2200 }}"></label>
     <label>单章最高字数<input type="number" name="target_chars_max" value="{{ record.target_chars_max or 3200 }}"></label>
     <label>核心卖点<input name="premise" value="{{ record.premise or '' }}"></label>
   </div>
   <label>全书主线<textarea name="story_mainline" rows="5">{{ record.story_mainline or '' }}</textarea></label>
+  <label>全书结构化大纲<textarea name="book_outline" rows="10" {% if locked %}readonly{% endif %}>{{ record.book_outline or record.imported_outline or '' }}</textarea></label>
   <label>世界观设定<textarea name="worldbuilding" rows="6">{{ record.worldbuilding or '' }}</textarea></label>
-  <label>导入大纲<textarea name="imported_outline" rows="7">{{ record.imported_outline or '' }}</textarea></label>
+  <label>旧资料/参考草案<textarea name="imported_outline" rows="5" {% if locked %}readonly{% endif %}>{{ record.imported_outline or '' }}</textarea></label>
   <div class="form-actions">
-    <button class="primary-action" type="submit">保存开书设定</button>
+    <button class="primary-action" type="submit">保存并返回工作台</button>
   </div>
 </form>
 {% endblock %}

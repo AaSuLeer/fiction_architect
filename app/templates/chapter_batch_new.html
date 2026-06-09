@@ -3,14 +3,29 @@
 {% block content %}
 <section class="page-head">
   <p class="eyebrow">新建章节</p>
-  <h1>创建章节批次</h1>
-  <p class="muted">默认三章，最多二十章。系统会按已有章节号继续生成章节卡片，先让你确认细纲，再统一生成正文。</p>
+  <h1>按单元纲生成章节卡片</h1>
+  <p class="muted">系统优先使用当前未完成单元的推荐章节数；你可以在 1-20 章内调整。</p>
 </section>
 
+{% set selected = current_unit or (arcs[0] if arcs else None) %}
 <form class="panel narrow-form" method="post" action="/books/{{ book.id }}/chapter-batches/new">
-  <label>本次新建章节数
-    <input type="number" name="chapter_count" value="3" min="1" max="20">
+  <label>选择单元
+    <select name="arc_id">
+      {% for arc in arcs %}
+      <option value="{{ arc.id }}" {% if selected and selected.id == arc.id %}selected{% endif %}>{{ arc.title }}（推荐 {{ arc.recommended_chapters or 5 }} 章）</option>
+      {% endfor %}
+    </select>
   </label>
+  <label>本次生成章节数
+    <input type="number" name="chapter_count" value="{{ selected.recommended_chapters if selected else 5 }}" min="1" max="20">
+  </label>
+  {% if selected %}
+  <input type="hidden" name="volume_id" value="{{ selected.volume_id }}">
+  <div class="notice">
+    <strong>当前单元：</strong>{{ selected.title }}<br>
+    <span>{{ selected.goal }}</span>
+  </div>
+  {% endif %}
   <button class="primary-action" type="submit">生成章节卡片</button>
 </form>
 {% endblock %}

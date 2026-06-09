@@ -2,9 +2,9 @@
 {% block title %}第 {{ plan.chapter_no }} 章 - {{ book.title }}{% endblock %}
 {% block content %}
 <section class="page-head">
-  <p class="eyebrow">章节卡片</p>
+  <p class="eyebrow">章节细纲</p>
   <h1>第 {{ plan.chapter_no }} 章：{{ plan.title }}</h1>
-  <p class="muted">这里仅维护本章细纲，不修改全书持久设定。</p>
+  <p class="muted">{{ plan.volume_title or "未归卷" }} / {{ plan.arc_title or "未归单元" }}。保存后自动返回上一级批次或卷纲页面。</p>
 </section>
 
 <form class="panel wide-form" method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/plan">
@@ -16,9 +16,21 @@
   <label>推进限制<textarea name="pace_limit" rows="4">{{ plan.pace_limit }}</textarea></label>
   <label>目标字数<input type="number" name="target_chars" value="{{ plan.target_chars or 2600 }}" min="800"></label>
   <div class="form-actions">
-    <button class="primary-action" type="submit">保存</button>
+    <button class="primary-action" type="submit">保存并返回上一级</button>
   </div>
 </form>
+
+<section class="panel danger-zone">
+  <h2>删除章节</h2>
+  <p class="muted">
+    删除会清理本章卡片、正文、草稿、审核记录和重写任务。
+    {% if body and body.status == "exported" %}本章已经导出，历史连续性记忆不会回滚；重写后需重新人工确认并导出，才会新增连续性版本。{% endif %}
+  </p>
+  <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/delete">
+    <input name="confirm" placeholder="输入 DELETE 确认删除">
+    <button type="submit">删除本章</button>
+  </form>
+</section>
 
 <section class="two-col">
   <div class="panel">
@@ -27,7 +39,7 @@
     <p><strong>{{ body.status }}</strong></p>
     <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/confirm">
       <label>正文（人工可修改）<textarea name="body" rows="22">{{ body.body }}</textarea></label>
-      <button class="primary-action" type="submit">人工确认正文</button>
+      <button class="primary-action" type="submit">人工确认正文并返回列表</button>
     </form>
     {% else %}
     <p class="muted">本章尚未生成正文。</p>

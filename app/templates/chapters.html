@@ -15,10 +15,21 @@
     <h2>章节正文</h2>
     {% for plan in plans %}
     {% set body = bodies.get(plan.chapter_no) %}
-    <a class="list-row" href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">
-      <span>第 {{ plan.chapter_no }} 章：{{ plan.title }}</span>
-      <strong>{{ body.status if body else "未生成" }}</strong>
-    </a>
+    <div class="list-row">
+      <a href="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}">第 {{ plan.chapter_no }} 章：{{ plan.title }}</a>
+      <strong>
+        {% if body and body.status == "editor_approved" %}待人工确认
+        {% elif body and body.status == "human_confirmed" %}已人工确认
+        {% elif body and body.status == "exported" %}已导出
+        {% else %}未生成{% endif %}
+      </strong>
+      <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/delete" class="inline-danger">
+        <input name="confirm" placeholder="DELETE">
+        <button type="submit">删除</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="muted">还没有章节。请先新建章节。</p>
     {% endfor %}
   </div>
   <div class="panel">

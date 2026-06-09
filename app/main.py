@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,7 +21,7 @@ from app.config import PROJECT_ROOT, get_settings
 from app.factory import build_runtime
 from app.llm import TextGuard
 from app.services.editorial_department import EditorialDepartment
-from app.storage.repository import POV_LABELS
+from app.storage.repository import POV_LABELS, json_safe
 
 
 EXPORT_ROOT = PROJECT_ROOT / "exports"
@@ -34,6 +34,15 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_ROOT)), name="uploads")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
 
 
+@app.middleware("http")
+async def no_store_html(request: Request, call_next):
+    response: Response = await call_next(request)
+    content_type = response.headers.get("content-type", "")
+    if "text/html" in content_type:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
 def runtime():
     return build_runtime()
 
@@ -44,12 +53,12 @@ def render_error(request: Request, message: str, status_code: int = 400):
 
 def _menu(book_id: int) -> list[dict[str, str]]:
     return [
-        {"label": "开书设定", "href": f"/books/{book_id}/setup", "hint": "维护人称、平台、世界观和核心卖点"},
-        {"label": "大纲设置", "href": f"/books/{book_id}/outline", "hint": "全书、卷、单元和章节规划"},
+        {"label": "开书设定", "href": f"/books/{book_id}/setup", "hint": "全书结构化大纲、预估字数和基础设定"},
+        {"label": "卷纲", "href": f"/books/{book_id}/outline", "hint": "卷纲、单元纲、章节细纲入口"},
         {"label": "作者设置", "href": f"/books/{book_id}/author", "hint": "当前书专属文风和写作规则"},
         {"label": "编辑设置", "href": f"/books/{book_id}/editor", "hint": "当前书专属平台审稿规则"},
         {"label": "连续性工作室", "href": f"/books/{book_id}/continuity", "hint": "记忆、事实池、漂移审计"},
-        {"label": "新建章节", "href": f"/books/{book_id}/chapter-batches/new", "hint": "一次生成 1-20 章细纲卡片"},
+        {"label": "新建章节", "href": f"/books/{book_id}/chapter-batches/new", "hint": "按当前单元推荐章节数生成"},
         {"label": "正文/导出", "href": f"/books/{book_id}/chapters", "hint": "确认正文并导出 DOCX"},
     ]
 
@@ -58,11 +67,10 @@ def _book_context(repo, book_id: int, request: Request, **extra: Any) -> dict[st
     book = repo.get_book(book_id)
     if book is None:
         return {"request": request, "missing": True}
-    record = repo.get_book_record(book_id) or {}
     return {
         "request": request,
         "book": book,
-        "record": record,
+        "record": repo.get_book_record(book_id) or {},
         "menu": _menu(book_id),
         "pov_labels": POV_LABELS,
         **extra,
@@ -96,8 +104,10 @@ def create_book(
     pov_policy: str = Form("third_limited"),
     target_chars_min: int = Form(2200),
     target_chars_max: int = Form(3200),
+    estimated_total_words: int = Form(1000000),
     story_mainline: str = Form(""),
     worldbuilding: str = Form(""),
+    book_outline: str = Form(""),
     imported_outline: str = Form(""),
     characters_text: str = Form(""),
 ):
@@ -112,8 +122,10 @@ def create_book(
             pov_policy=pov_policy,
             target_chars_min=target_chars_min,
             target_chars_max=target_chars_max,
+            estimated_total_words=estimated_total_words,
             story_mainline=story_mainline,
             worldbuilding=worldbuilding,
+            book_outline=book_outline,
             imported_outline=imported_outline,
             characters_text=characters_text,
         )
@@ -161,6 +173,8 @@ def book_detail(request: Request, book_id: int):
         book_id,
         request,
         controls=repo.get_book_controls(book_id),
+        volumes=repo.list_volumes(book_id),
+        arcs=repo.list_arcs(book_id),
         plans=repo.list_chapter_plan_rows(book_id),
         batches=repo.list_chapter_batches(book_id),
         bodies=repo.list_chapter_bodies(book_id),
@@ -206,8 +220,10 @@ def update_setup(
     pov_policy: str = Form("third_limited"),
     target_chars_min: int = Form(2200),
     target_chars_max: int = Form(3200),
+    estimated_total_words: int = Form(1000000),
     story_mainline: str = Form(""),
     worldbuilding: str = Form(""),
+    book_outline: str = Form(""),
     imported_outline: str = Form(""),
 ):
     repo, _ = runtime()
@@ -223,36 +239,88 @@ def update_setup(
                 "pov_policy": pov_policy,
                 "target_chars_min": target_chars_min,
                 "target_chars_max": target_chars_max,
+                "estimated_total_words": estimated_total_words,
                 "story_mainline": story_mainline,
                 "worldbuilding": worldbuilding,
+                "book_outline": book_outline,
                 "imported_outline": imported_outline,
             },
         )
     except ValueError as exc:
         return render_error(request, str(exc))
+    return RedirectResponse(f"/books/{book_id}", status_code=303)
+
+
+@app.post("/books/{book_id}/setup/lock-outline")
+def lock_outline(book_id: int):
+    repo, _ = runtime()
+    repo.lock_book_outline(book_id)
+    return RedirectResponse(f"/books/{book_id}/setup", status_code=303)
+
+
+@app.post("/books/{book_id}/setup/unlock-outline")
+def unlock_outline(book_id: int):
+    repo, _ = runtime()
+    repo.unlock_book_outline(book_id)
     return RedirectResponse(f"/books/{book_id}/setup", status_code=303)
 
 
 @app.get("/books/{book_id}/outline", response_class=HTMLResponse)
 def outline_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(repo, book_id, request, controls=repo.get_book_controls(book_id), plans=repo.list_chapter_plan_rows(book_id))
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        controls=repo.get_book_controls(book_id),
+        volumes=repo.list_volumes(book_id),
+        arcs=repo.list_arcs(book_id),
+        plans=repo.list_chapter_plan_rows(book_id),
+    )
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)
     return templates.TemplateResponse(request, "outline.html", context)
 
 
-@app.post("/books/{book_id}/architecture")
-def update_architecture(
+@app.post("/books/{book_id}/volumes/{volume_id}")
+def update_volume(
     book_id: int,
-    volume_title: str = Form(...),
-    volume_goal: str = Form(...),
-    arc_title: str = Form(...),
-    arc_goal: str = Form(...),
-    arc_pressure: str = Form(...),
+    volume_id: int,
+    title: str = Form(...),
+    goal: str = Form(""),
+    estimated_words: int = Form(200000),
+    core_conflict: str = Form(""),
+    stage_payoff: str = Form(""),
+    character_progression: str = Form(""),
+    foreshadowing_plan: str = Form(""),
+    start_chapter: int = Form(1),
+    end_chapter: int = Form(1),
 ):
     repo, _ = runtime()
-    repo.update_architecture(book_id, volume_title, volume_goal, arc_title, arc_goal, arc_pressure)
+    repo.update_volume(book_id, volume_id, locals())
+    return RedirectResponse(f"/books/{book_id}/outline", status_code=303)
+
+
+@app.post("/books/{book_id}/arcs/{arc_id}")
+def update_arc(
+    book_id: int,
+    arc_id: int,
+    title: str = Form(...),
+    goal: str = Form(""),
+    pressure: str = Form(""),
+    cause: str = Form(""),
+    process: str = Form(""),
+    result: str = Form(""),
+    payoff: str = Form(""),
+    character_change: str = Form(""),
+    foreshadowing_progress: str = Form(""),
+    recommended_chapters: int = Form(5),
+    start_chapter: int = Form(1),
+    end_chapter: int = Form(1),
+    status: str = Form("planned"),
+):
+    repo, _ = runtime()
+    repo.update_arc(book_id, arc_id, locals())
     return RedirectResponse(f"/books/{book_id}/outline", status_code=303)
 
 
@@ -266,34 +334,10 @@ def book_author_page(request: Request, book_id: int):
 
 
 @app.post("/books/{book_id}/author")
-def update_book_author(
-    book_id: int,
-    name: str = Form(""),
-    genre: str = Form(""),
-    pov_preference: str = Form("third_limited"),
-    sentence_rhythm: str = Form(""),
-    dialogue_style: str = Form(""),
-    payoff_preference: str = Form(""),
-    forbidden_items: str = Form(""),
-    prompt_rules: str = Form(""),
-    sample_summary: str = Form(""),
-):
+def update_book_author(book_id: int, name: str = Form(""), genre: str = Form(""), pov_preference: str = Form("third_limited"), sentence_rhythm: str = Form(""), dialogue_style: str = Form(""), payoff_preference: str = Form(""), forbidden_items: str = Form(""), prompt_rules: str = Form(""), sample_summary: str = Form("")):
     repo, _ = runtime()
-    repo.update_book_author_profile(
-        book_id,
-        {
-            "name": name,
-            "genre": genre,
-            "pov_preference": pov_preference,
-            "sentence_rhythm": sentence_rhythm,
-            "dialogue_style": dialogue_style,
-            "payoff_preference": payoff_preference,
-            "forbidden_items": forbidden_items,
-            "prompt_rules": prompt_rules,
-            "sample_summary": sample_summary,
-        },
-    )
-    return RedirectResponse(f"/books/{book_id}/author", status_code=303)
+    repo.update_book_author_profile(book_id, locals())
+    return RedirectResponse(f"/books/{book_id}", status_code=303)
 
 
 @app.post("/books/{book_id}/author/from-resource")
@@ -315,32 +359,10 @@ def book_editor_page(request: Request, book_id: int):
 
 
 @app.post("/books/{book_id}/editor")
-def update_book_editor(
-    book_id: int,
-    name: str = Form(""),
-    platform: str = Form(""),
-    word_count_rule: str = Form(""),
-    pov_rule: str = Form(""),
-    structure_rule: str = Form(""),
-    payoff_rule: str = Form(""),
-    pollution_rule: str = Form(""),
-    reject_threshold: int = Form(1),
-):
+def update_book_editor(book_id: int, name: str = Form(""), platform: str = Form(""), word_count_rule: str = Form(""), pov_rule: str = Form(""), structure_rule: str = Form(""), payoff_rule: str = Form(""), pollution_rule: str = Form(""), reject_threshold: int = Form(1)):
     repo, _ = runtime()
-    repo.update_book_editor_profile(
-        book_id,
-        {
-            "name": name,
-            "platform": platform,
-            "word_count_rule": word_count_rule,
-            "pov_rule": pov_rule,
-            "structure_rule": structure_rule,
-            "payoff_rule": payoff_rule,
-            "pollution_rule": pollution_rule,
-            "reject_threshold": reject_threshold,
-        },
-    )
-    return RedirectResponse(f"/books/{book_id}/editor", status_code=303)
+    repo.update_book_editor_profile(book_id, locals())
+    return RedirectResponse(f"/books/{book_id}", status_code=303)
 
 
 @app.post("/books/{book_id}/editor/from-resource")
@@ -355,18 +377,26 @@ def assign_editor_resource(book_id: int, editor_profile_id: int = Form(...)):
 @app.get("/books/{book_id}/chapter-batches/new", response_class=HTMLResponse)
 def new_batch_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(repo, book_id, request)
+    current_unit = repo.get_current_unit(book_id)
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        volumes=repo.list_volumes(book_id),
+        arcs=repo.list_arcs(book_id),
+        current_unit=current_unit,
+    )
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)
     return templates.TemplateResponse(request, "chapter_batch_new.html", context)
 
 
 @app.post("/books/{book_id}/chapter-batches/new")
-def create_batch(request: Request, book_id: int, chapter_count: int = Form(3)):
-    if chapter_count < 1 or chapter_count > 20:
+def create_batch(request: Request, book_id: int, chapter_count: int = Form(0), arc_id: int = Form(0), volume_id: int = Form(0)):
+    if chapter_count and (chapter_count < 1 or chapter_count > 20):
         return render_error(request, "一次最多只能新建 20 章，最少 1 章。")
     repo, _ = runtime()
-    batch_id = repo.create_chapter_batch(book_id, chapter_count)
+    batch_id = repo.create_chapter_batch(book_id, chapter_count or None, volume_id or None, arc_id or None)
     return RedirectResponse(f"/books/{book_id}/chapter-batches/{batch_id}", status_code=303)
 
 
@@ -383,6 +413,7 @@ def batch_page(request: Request, book_id: int, batch_id: int):
         batch=batch,
         plans=repo.list_chapter_plan_rows(book_id, batch_id),
         bodies={row["chapter_no"]: row for row in repo.list_chapter_bodies(book_id)},
+        artifacts_by_chapter={row["chapter_no"]: row for row in repo.list_artifacts(book_id) if row["artifact_type"] == "generation_error"},
     )
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)
@@ -392,7 +423,11 @@ def batch_page(request: Request, book_id: int, batch_id: int):
 @app.post("/books/{book_id}/chapter-batches/{batch_id}/generate")
 def generate_batch(book_id: int, batch_id: int):
     _, pipe = runtime()
-    pipe.generate_batch(book_id, batch_id)
+    try:
+        pipe.generate_batch(book_id, batch_id)
+    except Exception as exc:
+        repo, _ = runtime()
+        repo.update_batch_status(batch_id, "failed", "生成失败，可重试。", f"{type(exc).__name__}: {exc}")
     return RedirectResponse(f"/books/{book_id}/chapter-batches/{batch_id}", status_code=303)
 
 
@@ -419,35 +454,17 @@ def chapter_detail(request: Request, book_id: int, chapter_no: int):
     plan = repo.get_chapter_plan_row(book_id, chapter_no)
     if plan is None:
         return render_error(request, "章节卡片不存在。", 404)
-    context = _book_context(
-        repo,
-        book_id,
-        request,
-        plan=plan,
-        body=repo.get_chapter_body(book_id, chapter_no),
-        artifacts=repo.list_artifacts(book_id, chapter_no),
-        task=repo.get_rewrite_task(book_id, chapter_no),
-    )
+    context = _book_context(repo, book_id, request, plan=plan, body=repo.get_chapter_body(book_id, chapter_no), artifacts=repo.list_artifacts(book_id, chapter_no), task=repo.get_rewrite_task(book_id, chapter_no))
     return templates.TemplateResponse(request, "chapter_detail.html", context)
 
 
 @app.post("/books/{book_id}/chapters/{chapter_no}/plan")
-def update_chapter_plan(
-    book_id: int,
-    chapter_no: int,
-    title: str = Form(...),
-    objective: str = Form(...),
-    allowed_reveals: str = Form(""),
-    forbidden_reveals: str = Form(""),
-    pace_limit: str = Form(""),
-    plot_summary: str = Form(""),
-    target_chars: int = Form(2600),
-):
+def update_chapter_plan(book_id: int, chapter_no: int, title: str = Form(...), objective: str = Form(...), allowed_reveals: str = Form(""), forbidden_reveals: str = Form(""), pace_limit: str = Form(""), plot_summary: str = Form(""), target_chars: int = Form(2600)):
     repo, _ = runtime()
     repo.update_chapter_plan(book_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars)
     plan = repo.get_chapter_plan_row(book_id, chapter_no) or {}
     batch_id = plan.get("batch_id")
-    target = f"/books/{book_id}/chapter-batches/{batch_id}" if batch_id else f"/books/{book_id}/chapters"
+    target = f"/books/{book_id}/chapter-batches/{batch_id}" if batch_id else f"/books/{book_id}/outline"
     return RedirectResponse(target, status_code=303)
 
 
@@ -465,6 +482,17 @@ def rewrite_chapter(book_id: int, chapter_no: int):
     return RedirectResponse(f"/books/{book_id}/chapters/{chapter_no}", status_code=303)
 
 
+@app.post("/books/{book_id}/chapters/{chapter_no}/delete")
+def delete_chapter(request: Request, book_id: int, chapter_no: int, confirm: str = Form("")):
+    repo, _ = runtime()
+    if confirm != "DELETE":
+        return render_error(request, "请输入 DELETE 确认删除章节。")
+    result = repo.delete_chapter(book_id, chapter_no)
+    batch_id = result.get("batch_id")
+    target = f"/books/{book_id}/chapter-batches/{batch_id}" if batch_id else f"/books/{book_id}/chapters"
+    return RedirectResponse(target, status_code=303)
+
+
 @app.post("/books/{book_id}/chapters/{chapter_no}/confirm")
 def confirm_chapter(request: Request, book_id: int, chapter_no: int, body: str = Form("")):
     repo, _ = runtime()
@@ -472,20 +500,13 @@ def confirm_chapter(request: Request, book_id: int, chapter_no: int, body: str =
         repo.confirm_chapter_body(book_id, chapter_no, body)
     except ValueError as exc:
         return render_error(request, str(exc))
-    return RedirectResponse(f"/books/{book_id}/chapters/{chapter_no}", status_code=303)
+    return RedirectResponse(f"/books/{book_id}/chapters", status_code=303)
 
 
 @app.get("/books/{book_id}/continuity", response_class=HTMLResponse)
 def continuity_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(
-        repo,
-        book_id,
-        request,
-        memories=repo.list_memories(book_id),
-        atoms=repo.list_atoms(book_id),
-        logs=repo.list_retrieval_logs(book_id),
-    )
+    context = _book_context(repo, book_id, request, memories=repo.list_memories(book_id), atoms=repo.list_atoms(book_id), logs=repo.list_retrieval_logs(book_id))
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)
     return templates.TemplateResponse(request, "continuity.html", context)
@@ -497,8 +518,7 @@ def memory_edit_page(request: Request, book_id: int, memory_id: int):
     memory = next((row for row in repo.list_memories(book_id, limit=1000) if int(row["id"]) == memory_id), None)
     if memory is None:
         return render_error(request, "记忆版本不存在。", 404)
-    context = _book_context(repo, book_id, request, memory=memory)
-    return templates.TemplateResponse(request, "memory_edit.html", context)
+    return templates.TemplateResponse(request, "memory_edit.html", _book_context(repo, book_id, request, memory=memory))
 
 
 @app.post("/books/{book_id}/continuity/memories/{memory_id}/edit")
@@ -518,8 +538,7 @@ def compress_period(book_id: int, memory_type: str = Form(...)):
 @app.get("/books/{book_id}/continuity/atoms", response_class=HTMLResponse)
 def atoms_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(repo, book_id, request, atoms=repo.list_atoms(book_id))
-    return templates.TemplateResponse(request, "atoms.html", context)
+    return templates.TemplateResponse(request, "atoms.html", _book_context(repo, book_id, request, atoms=repo.list_atoms(book_id)))
 
 
 @app.post("/books/{book_id}/continuity/atoms/{atom_id}/{status}")
@@ -533,8 +552,7 @@ def atom_status(book_id: int, atom_id: int, status: str):
 @app.get("/books/{book_id}/continuity/drift", response_class=HTMLResponse)
 def drift_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(repo, book_id, request, reports=repo.list_drift_reports(book_id))
-    return templates.TemplateResponse(request, "drift.html", context)
+    return templates.TemplateResponse(request, "drift.html", _book_context(repo, book_id, request, reports=repo.list_drift_reports(book_id)))
 
 
 @app.post("/books/{book_id}/continuity/drift")
@@ -547,8 +565,7 @@ def create_drift(book_id: int, chapter_no: int = Form(0)):
 @app.get("/books/{book_id}/continuity/logs", response_class=HTMLResponse)
 def retrieval_logs_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(repo, book_id, request, logs=repo.list_retrieval_logs(book_id))
-    return templates.TemplateResponse(request, "retrieval_logs.html", context)
+    return templates.TemplateResponse(request, "retrieval_logs.html", _book_context(repo, book_id, request, logs=repo.list_retrieval_logs(book_id)))
 
 
 @app.get("/resources/{kind}", response_class=HTMLResponse)
@@ -556,28 +573,22 @@ def resources_page(request: Request, kind: str):
     repo, _ = runtime()
     if kind not in {"authors", "editors"}:
         return render_error(request, "资源类型不存在。", 404)
-    return templates.TemplateResponse(
-        request,
-        "resources.html",
-        {"request": request, "kind": kind, "profiles": repo.list_profiles(kind), "edit_profile": None, "json_text": ""},
-    )
+    return templates.TemplateResponse(request, "resources.html", {"request": request, "kind": kind, "profiles": repo.list_profiles(kind), "edit_profile": None, "json_text": ""})
 
 
 @app.get("/resources/{kind}/{profile_id}", response_class=HTMLResponse)
 def edit_resource_page(request: Request, kind: str, profile_id: int):
     repo, _ = runtime()
-    return templates.TemplateResponse(
-        request,
-        "resources.html",
-        {"request": request, "kind": kind, "profiles": repo.list_profiles(kind), "edit_profile": repo.get_profile(kind, profile_id), "json_text": ""},
-    )
+    return templates.TemplateResponse(request, "resources.html", {"request": request, "kind": kind, "profiles": repo.list_profiles(kind), "edit_profile": json_safe(repo.get_profile(kind, profile_id)), "json_text": ""})
 
 
 @app.post("/resources/{kind}/save")
-def save_resource(kind: str, profile_id: int = Form(0), payload: str = Form("")):
+def save_resource(request: Request, kind: str, profile_id: int = Form(0), payload: str = Form("")):
     repo, _ = runtime()
-    data = json.loads(payload)
-    saved_id = repo.save_profile(kind, data, profile_id or None)
+    try:
+        saved_id = repo.save_profile(kind, json.loads(payload), profile_id or None)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        return render_error(request, f"资源 JSON 无法保存：{exc}")
     return RedirectResponse(f"/resources/{kind}/{saved_id}", status_code=303)
 
 
@@ -589,9 +600,12 @@ def delete_resource(kind: str, profile_id: int = Form(...)):
 
 
 @app.post("/resources/{kind}/import")
-def import_resource(kind: str, json_text: str = Form(...)):
+def import_resource(request: Request, kind: str, json_text: str = Form(...)):
     repo, _ = runtime()
-    repo.import_profiles(kind, json_text)
+    try:
+        repo.import_profiles(kind, json_text)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        return render_error(request, f"资源 JSON 无法导入：{exc}")
     return RedirectResponse(f"/resources/{kind}", status_code=303)
 
 
@@ -599,7 +613,7 @@ def import_resource(kind: str, json_text: str = Form(...)):
 def export_resources(kind: str):
     repo, _ = runtime()
     path = EXPORT_ROOT / f"{kind}_resources.json"
-    path.write_text(json.dumps(repo.list_profiles(kind), ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(json_safe(repo.list_profiles(kind)), ensure_ascii=False, indent=2), encoding="utf-8")
     return FileResponse(path, filename=path.name, media_type="application/json")
 
 
@@ -608,11 +622,7 @@ def debug_page(request: Request, book_id: int | None = None):
     repo, _ = runtime()
     books = repo.list_books("active")
     selected = book_id or (books[0].id if books else None)
-    return templates.TemplateResponse(
-        request,
-        "debug.html",
-        {"request": request, "books": books, "book": repo.get_book(selected) if selected else None, "controls": repo.get_book_controls(selected) if selected else None, "result": None, "sample": ""},
-    )
+    return templates.TemplateResponse(request, "debug.html", {"request": request, "books": books, "book": repo.get_book(selected) if selected else None, "controls": repo.get_book_controls(selected) if selected else None, "result": None, "sample": ""})
 
 
 @app.post("/debug", response_class=HTMLResponse)
@@ -636,11 +646,7 @@ def run_debug(request: Request, book_id: int = Form(...), sample: str = Form("")
     if story_problem:
         problems.append(story_problem)
     result = {"passed": not problems, "problems": problems, "char_count": char_count}
-    return templates.TemplateResponse(
-        request,
-        "debug.html",
-        {"request": request, "books": books, "book": repo.get_book(book_id), "controls": controls, "result": result, "sample": sample},
-    )
+    return templates.TemplateResponse(request, "debug.html", {"request": request, "books": books, "book": repo.get_book(book_id), "controls": controls, "result": result, "sample": sample})
 
 
 @app.get("/exports", response_class=HTMLResponse)
@@ -694,18 +700,7 @@ def department_page(request: Request, department: str, book_id: int | None = Non
     repo, _ = runtime()
     books = repo.list_books("active")
     selected = book_id or (books[0].id if books else None)
-    return templates.TemplateResponse(
-        request,
-        "department.html",
-        {
-            "request": request,
-            "department": department,
-            "books": books,
-            "book": repo.get_book(selected) if selected else None,
-            "controls": repo.get_book_controls(selected) if selected else None,
-            "plans": repo.list_chapter_plans(selected) if selected else [],
-        },
-    )
+    return templates.TemplateResponse(request, "department.html", {"request": request, "department": department, "books": books, "book": repo.get_book(selected) if selected else None, "controls": repo.get_book_controls(selected) if selected else None, "plans": repo.list_chapter_plans(selected) if selected else []})
 
 
 @app.get("/health")
@@ -726,27 +721,9 @@ def _write_minimal_docx(path: Path, title: str, premise: str, bodies: list[dict[
         paragraphs.extend([part.strip() for part in str(row["body"]).splitlines() if part.strip()])
     document_xml = "".join(f"<w:p><w:r><w:t>{html.escape(text)}</w:t></w:r></w:p>" for text in paragraphs if text)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(
-            "[Content_Types].xml",
-            """<?xml version="1.0" encoding="UTF-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-</Types>""",
-        )
-        archive.writestr(
-            "_rels/.rels",
-            """<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>""",
-        )
-        archive.writestr(
-            "word/document.xml",
-            f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{document_xml}<w:sectPr/></w:body></w:document>""",
-        )
+        archive.writestr("[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>""")
+        archive.writestr("_rels/.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>""")
+        archive.writestr("word/document.xml", f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{document_xml}<w:sectPr/></w:body></w:document>""")
 
 
 def _writable_output_path(filename: str) -> Path:

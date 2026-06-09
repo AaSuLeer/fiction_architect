@@ -38,21 +38,30 @@ class ArchitectureTests(unittest.TestCase):
         initialize_database(db)
         return Repository(db)
 
-    def test_formal_book_initializes_four_layer_architecture(self):
+    def test_formal_book_initializes_outline_without_fixed_three_chapters(self):
         with IsolatedEnv():
             repo = self.repo()
-            book_id = repo.create_book("架构测试书", "主角在规则压迫下反击", story_mainline="三章完成一次小闭环")
-            plans = repo.list_chapter_plans(book_id)
-            self.assertEqual([1, 2, 3], [plan.chapter_no for plan in plans])
-            ctx = repo.get_architecture_context(book_id, 1)
-            self.assertIn("第一卷", ctx["volume"]["title"])
-            self.assertIn("前三章", ctx["arc"]["title"])
-            self.assertEqual(ctx["arc"]["id"], repo.get_architecture_context(book_id, 3)["arc"]["id"])
+            book_id = repo.create_book("架构测试书", "主角在规则压迫下反击", story_mainline="百万字长期主线", estimated_total_words=600000)
+            self.assertEqual([], repo.list_chapter_plans(book_id))
+            self.assertGreaterEqual(len(repo.list_volumes(book_id)), 1)
+            self.assertGreaterEqual(len(repo.list_arcs(book_id)), 1)
+            record = repo.get_book_record(book_id)
+            self.assertEqual(600000, record["estimated_total_words"])
+            self.assertIn("百万字长期主线", record["book_outline"])
+
+    def test_first_batch_starts_from_chapter_one(self):
+        with IsolatedEnv():
+            repo = self.repo()
+            book_id = repo.create_book("批次测试书", "主角夺回解释权")
+            batch_id = repo.create_chapter_batch(book_id, 3)
+            plans = repo.list_chapter_plan_rows(book_id, batch_id)
+            self.assertEqual([1, 2, 3], [row["chapter_no"] for row in plans])
 
     def test_pipeline_editor_approval_does_not_write_continuity_before_export(self):
         with IsolatedEnv():
             repo, pipe = build_runtime()
             book_id = repo.create_book("生成测试书", "主角夺回解释权", target_chars_min=900, target_chars_max=1800)
+            repo.create_chapter_batch(book_id, 1)
             result = pipe.generate_chapter(book_id, 1)
             self.assertEqual("approved", result["status"])
             body = repo.get_chapter_body(book_id, 1)
@@ -63,6 +72,7 @@ class ArchitectureTests(unittest.TestCase):
         with IsolatedEnv():
             repo, pipe = build_runtime()
             book_id = repo.create_book("导出记忆书", "主角用证据反击", target_chars_min=50, target_chars_max=5000)
+            repo.create_chapter_batch(book_id, 1)
             text = "起因是公开压迫。经过是主角找到证据并反击。结果是对手退让，但留下新的代价。" * 20
             repo.save_chapter_body(book_id, 1, "第一章：反击", text, "human_confirmed")
             record = repo.create_export_record(book_id, "docx", "dummy.docx")
@@ -80,7 +90,8 @@ class ArchitectureTests(unittest.TestCase):
         with IsolatedEnv():
             repo, pipe = build_runtime()
             book_id = repo.create_book("第一人称书", "我从失败里反击", pov_policy="first_person", target_chars_min=20, target_chars_max=5000)
-            sample = "我站在验词台前，倒计时只剩三十息。起因是对手逼我退场。经过是我按住名册反问考官。结果是我赢下临时资格，也欠下三日后的代价。"
+            repo.create_chapter_batch(book_id, 1)
+            sample = "我站在验词台前，倒计时只剩三十息。起因是对手逼我退场。\n经过是我按住名册反问考官。\n结果是我赢下临时资格，也欠下三日后的代价。" * 5
             draft = repo.create_artifact(book_id, 1, "draft", "drafted", sample)
             review = pipe.editorial.review(book_id, 1, draft.id)
             self.assertNotIn("人称错误", review.content)

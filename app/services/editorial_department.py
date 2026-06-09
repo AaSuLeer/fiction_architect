@@ -31,8 +31,9 @@ class EditorialDepartment:
         story_problem = self._story_shape_problem(draft.content)
         if story_problem:
             problems.append(story_problem)
-        if any(term in draft.content for term in ["完整世界观", "最终秘密", "卷级终局"]):
-            problems.append("推进过快：疑似越过本章推进限制。")
+        drift_problem = self._outline_drift_problem(draft.content)
+        if drift_problem:
+            problems.append(drift_problem)
         status = "approved" if not problems else "rejected"
         report = {
             "name": "编辑意见",
@@ -62,8 +63,8 @@ class EditorialDepartment:
     def _story_shape_problem(self, body: str) -> str:
         if len([line for line in body.splitlines() if line.strip()]) < 8:
             return "故事结构不足：段落过少，缺少完整起因、经过、结果。"
-        pressure = ["倒计时", "惩罚", "处罚", "排名", "资格", "危机", "失去", "必须", "逼"]
-        action = ["伸手", "盯", "走", "按", "推", "反问", "判断", "试", "改", "挡", "转身"]
+        pressure = ["倒计时", "惩罚", "处罚", "排名", "资格", "危机", "失去", "必须", "退"]
+        action = ["伸手", "盯", "走", "按", "接", "反问", "判断", "证", "改", "转身"]
         result = ["终于", "通过", "赢", "败", "代价", "留下", "打开", "欠下", "换来"]
         if not any(word in body for word in pressure):
             return "故事结构不足：缺少明确起因或当场压力。"
@@ -71,4 +72,10 @@ class EditorialDepartment:
             return "故事结构不足：主角行动不足，经过不成立。"
         if not any(word in body for word in result):
             return "故事结构不足：缺少结果、兑现或下一章代价。"
+        return ""
+
+    def _outline_drift_problem(self, body: str) -> str:
+        risky_terms = ["全书终局", "最终秘密", "完整世界观", "卷级终局", "彻底解决所有问题"]
+        if any(term in body for term in risky_terms):
+            return "大纲漂移风险：疑似越过章节/单元限制，提前推进卷级或全书级目标。"
         return ""
