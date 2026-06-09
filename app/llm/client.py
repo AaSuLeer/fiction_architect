@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -25,15 +26,29 @@ class LlmClient:
             headers={"Authorization": f"Bearer {self.settings.zhipu_api_key}", "Content-Type": "application/json"},
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.settings.zhipu_timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Zhipu request failed: {exc}") from exc
-        choices = body.get("choices") or []
-        if not choices:
-            raise RuntimeError("Zhipu response did not contain choices.")
-        return choices[0]["message"]["content"]
+        last_error: BaseException | None = None
+        for attempt in range(1, 4):
+            try:
+                with urllib.request.urlopen(request, timeout=self.settings.zhipu_timeout) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                choices = body.get("choices") or []
+                if not choices:
+                    raise RuntimeError("Zhipu response did not contain choices.")
+                content = choices[0].get("message", {}).get("content", "")
+                if not content.strip():
+                    raise RuntimeError("Zhipu response content was empty.")
+                return content
+            except (TimeoutError, OSError, urllib.error.URLError) as exc:
+                last_error = exc
+                if attempt >= 3:
+                    raise RuntimeError(f"Zhipu request failed after {attempt} attempts: {exc}") from exc
+                time.sleep(1.5 * attempt)
+            except RuntimeError as exc:
+                last_error = exc
+                if attempt >= 3:
+                    raise
+                time.sleep(1.5 * attempt)
+        raise RuntimeError(f"Zhipu request failed: {last_error}")
 
     def mock_completion(self, user_prompt: str) -> str:
         paragraphs = [

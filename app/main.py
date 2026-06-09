@@ -413,7 +413,7 @@ def batch_page(request: Request, book_id: int, batch_id: int):
         batch=batch,
         plans=repo.list_chapter_plan_rows(book_id, batch_id),
         bodies={row["chapter_no"]: row for row in repo.list_chapter_bodies(book_id)},
-        artifacts_by_chapter={row["chapter_no"]: row for row in repo.list_artifacts(book_id) if row["artifact_type"] == "generation_error"},
+        artifacts_by_chapter={row["chapter_no"]: row for row in repo.list_artifacts(book_id) if row["artifact_type"] == "generation_error" and row["status"] == "failed"},
     )
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)

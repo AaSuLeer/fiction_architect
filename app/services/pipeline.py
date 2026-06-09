@@ -47,6 +47,7 @@ class Pipeline:
             plan = self.repo.get_chapter_plan(book_id, chapter_no)
             title = plan.title if plan else f"第{chapter_no}章"
             self.repo.save_chapter_body(book_id, chapter_no, title, approved.content, status="editor_approved")
+            self.repo.resolve_generation_errors(book_id, chapter_no)
         return {"status": status, "review_data": data}
 
     def rewrite_and_review(self, book_id: int, chapter_no: int) -> dict[str, object]:

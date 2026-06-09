@@ -19,8 +19,8 @@ class PromptCompressor:
             text = json.dumps(item, ensure_ascii=False)
             return sum(1 for key in keywords if key in text)
 
-        ranked_memories = sorted(memories, key=score, reverse=True)[:8]
-        ranked_atoms = sorted(atoms, key=score, reverse=True)[:40]
+        ranked_memories = sorted(memories, key=score, reverse=True)[:6]
+        ranked_atoms = sorted(atoms, key=score, reverse=True)[:24]
         reason = "结构化预算检索：全书/卷/单元/章节纲要优先，最近章节记忆和相关 atom 按当前章节目标重排。"
         return ranked_memories, ranked_atoms, reason
 
@@ -63,8 +63,8 @@ class ContinuityStudio:
             },
             "canon_ledger": ctx["canon"],
             "characters": ctx["characters"],
-            "selected_memories": selected_memories,
-            "selected_atoms": selected_atoms,
+            "selected_memories": [self._memory_prompt_view(item) for item in selected_memories],
+            "selected_atoms": [self._atom_prompt_view(item) for item in selected_atoms],
             "retrieval_log_id": log["id"],
             "compression_policy": reason,
             "gate": [
@@ -75,6 +75,29 @@ class ContinuityStudio:
             ],
         }
         return self.repo.create_artifact(book_id, chapter_no, "ref_pack", "ready", json.dumps(json_safe(ref_pack), ensure_ascii=False, indent=2))
+
+    def _memory_prompt_view(self, memory: dict) -> dict:
+        content = str(memory.get("content") or "")
+        budget = min(900, max(300, int(memory.get("token_budget") or 700)))
+        return {
+            "id": memory.get("id"),
+            "memory_type": memory.get("memory_type"),
+            "scope_key": memory.get("scope_key"),
+            "version": memory.get("version"),
+            "chapter_range": [memory.get("source_start_chapter"), memory.get("source_end_chapter")],
+            "source_export_id": memory.get("source_export_id"),
+            "content": self._compact_text(content, budget),
+        }
+
+    def _atom_prompt_view(self, atom: dict) -> dict:
+        return {
+            "id": atom.get("id"),
+            "atom_type": atom.get("atom_type"),
+            "chapter_no": atom.get("chapter_no"),
+            "visible_after_chapter": atom.get("visible_after_chapter"),
+            "confidence": atom.get("confidence"),
+            "content": self._compact_text(str(atom.get("content") or ""), 360),
+        }
 
     def writeback_from_export(self, book_id: int, export_id: int):
         bodies = [row for row in self.repo.list_chapter_bodies(book_id, status="exported") if int(row.get("export_id") or 0) == int(export_id)]

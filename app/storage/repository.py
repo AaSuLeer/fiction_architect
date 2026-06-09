@@ -755,7 +755,8 @@ class Repository:
         with self.db.session() as conn:
             existing = self._fetchone(conn, "SELECT * FROM rewrite_tasks WHERE book_id = ? AND chapter_no = ? AND status IN ('pending','running') ORDER BY id DESC LIMIT 1", (book_id, chapter_no))
             if existing:
-                return existing
+                self._execute(conn, "UPDATE rewrite_tasks SET review_artifact_id = ?, error = ? WHERE id = ?", (review_artifact_id, error, existing["id"]))
+                return self._fetchone(conn, "SELECT * FROM rewrite_tasks WHERE id = ?", (existing["id"],)) or existing
             cur = conn.cursor()
             ph = self.db.placeholder()
             cur.execute(f"INSERT INTO rewrite_tasks (book_id, chapter_no, review_artifact_id, max_attempts, error) VALUES ({ph},{ph},{ph},{ph},{ph})", (book_id, chapter_no, review_artifact_id, 3, error))
@@ -771,6 +772,28 @@ class Repository:
                 self._execute(conn, "UPDATE rewrite_tasks SET status = ?, error = ? WHERE id = ?", (status, error, task_id))
             else:
                 self._execute(conn, "UPDATE rewrite_tasks SET status = ?, attempts = ?, error = ? WHERE id = ?", (status, attempts, error, task_id))
+
+    def resolve_generation_errors(self, book_id: int, chapter_no: int) -> None:
+        with self.db.session() as conn:
+            self._execute(conn, "UPDATE artifacts SET status = ? WHERE book_id = ? AND chapter_no = ? AND artifact_type = ? AND status = ?", ("resolved", book_id, chapter_no, "generation_error", "failed"))
+
+    def resolve_generation_errors_for_existing_bodies(self) -> None:
+        with self.db.session() as conn:
+            if self.db.is_mysql:
+                sql = """UPDATE artifacts a
+                    JOIN chapter_bodies b ON b.book_id = a.book_id AND b.chapter_no = a.chapter_no
+                    SET a.status = %s
+                    WHERE a.artifact_type = %s AND a.status = %s"""
+            else:
+                sql = """UPDATE artifacts
+                    SET status = ?
+                    WHERE artifact_type = ? AND status = ?
+                    AND EXISTS (
+                        SELECT 1 FROM chapter_bodies
+                        WHERE chapter_bodies.book_id = artifacts.book_id
+                        AND chapter_bodies.chapter_no = artifacts.chapter_no
+                    )"""
+            conn.cursor().execute(sql, ("resolved", "generation_error", "failed"))
 
     def save_chapter_body(self, book_id: int, chapter_no: int, title: str, body: str, status: str = "drafted", export_id: int | None = None) -> None:
         with self.db.session() as conn:

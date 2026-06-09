@@ -11,5 +11,5 @@ def build_runtime() -> tuple[Repository, Pipeline]:
     db = Database(settings)
     initialize_database(db)
     repo = Repository(db)
+    repo.resolve_generation_errors_for_existing_bodies()
     return repo, Pipeline(repo, LlmClient(settings))
-
