@@ -18,7 +18,7 @@ def load_env(path: Path | None = None) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        os.environ[key.strip()] = value.strip().strip('"').strip("'")
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,8 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    load_env()
+    if os.getenv("FICTION_ARCHITECT_SKIP_DOTENV") != "1":
+        load_env()
     llm_api_key = os.getenv("LLM_API_KEY") or os.getenv("ZHIPUAI_API_KEY", "")
     raw_mode = (os.getenv("LLM_MODE") or "").strip()
     raw_mode_key = raw_mode.lower()

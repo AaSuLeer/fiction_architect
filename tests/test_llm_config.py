@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from pathlib import Path
 
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, load_env
 from app.llm.client import LlmClient
 
 
@@ -20,6 +21,7 @@ class LlmConfigTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(
             {
+                "FICTION_ARCHITECT_SKIP_DOTENV": "1",
                 "LLM_API_KEY": "new-key",
                 "LLM_BASE_URL": "https://example.test/v1/chat/completions",
                 "LLM_DEFAULT_MODEL": "default-model",
@@ -40,7 +42,7 @@ class LlmConfigTests(unittest.TestCase):
 
     def test_legacy_zhipu_names_still_fall_back(self):
         os.environ.clear()
-        os.environ.update({"LLM_API_KEY": "", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "old-key", "ZHIPUAI_MODEL": "legacy-model", "LLM_MODE": "", "SQLITE_PATH": "data/test_llm_config.db"})
+        os.environ.update({"FICTION_ARCHITECT_SKIP_DOTENV": "1", "LLM_API_KEY": "", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "old-key", "ZHIPUAI_MODEL": "legacy-model", "LLM_MODE": "", "SQLITE_PATH": "data/test_llm_config.db"})
         settings = get_settings()
         self.assertEqual("old-key", settings.llm_api_key)
         self.assertEqual("legacy-model", settings.llm_default_model)
@@ -48,14 +50,14 @@ class LlmConfigTests(unittest.TestCase):
 
     def test_model_name_in_llm_mode_is_treated_as_compatible_model(self):
         os.environ.clear()
-        os.environ.update({"LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "", "ZHIPUAI_MODEL": "", "LLM_MODE": "qwen-plus-2025-12-01", "SQLITE_PATH": "data/test_llm_config.db"})
+        os.environ.update({"FICTION_ARCHITECT_SKIP_DOTENV": "1", "LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "", "ZHIPUAI_API_KEY": "", "ZHIPUAI_MODEL": "", "LLM_MODE": "qwen-plus-2025-12-01", "SQLITE_PATH": "data/test_llm_config.db"})
         settings = get_settings()
         self.assertEqual("compatible", settings.llm_mode)
         self.assertEqual("qwen-plus-2025-12-01", settings.llm_default_model)
 
     def test_provider_alias_in_llm_mode_keeps_generic_compatible_mode(self):
         os.environ.clear()
-        os.environ.update({"LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "qwen-plus", "LLM_MODE": "qwen", "SQLITE_PATH": "data/test_llm_config.db"})
+        os.environ.update({"FICTION_ARCHITECT_SKIP_DOTENV": "1", "LLM_API_KEY": "key", "LLM_DEFAULT_MODEL": "qwen-plus", "LLM_MODE": "qwen", "SQLITE_PATH": "data/test_llm_config.db"})
         settings = get_settings()
         self.assertEqual("compatible", settings.llm_mode)
         self.assertEqual("qwen-plus", settings.llm_default_model)
@@ -73,6 +75,14 @@ class LlmConfigTests(unittest.TestCase):
             "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
             client._chat_completions_url(client.settings.llm_base_url),
         )
+
+    def test_env_file_overrides_stale_process_values(self):
+        os.environ["LLM_BASE_URL"] = "https://stale.example/v1"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_path = Path(tmpdir) / ".env"
+            env_path.write_text("LLM_BASE_URL=https://fresh.example/v1\n", encoding="utf-8")
+            load_env(env_path)
+        self.assertEqual("https://fresh.example/v1", os.environ["LLM_BASE_URL"])
 
     def _settings_with_url(self, url: str) -> Settings:
         return Settings(

@@ -46,10 +46,22 @@ class LlmClient:
                 if not content.strip():
                     raise RuntimeError("LLM response content was empty.")
                 return content
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                detail = self._http_error_detail(exc)
+                if attempt >= 3:
+                    raise RuntimeError(
+                        f"LLM request failed after {attempt} attempts: HTTP {exc.code} at {request_url}; "
+                        f"model={selected_model}; role={role}; response={detail}"
+                    ) from exc
+                time.sleep(1.5 * attempt)
             except (TimeoutError, OSError, urllib.error.URLError) as exc:
                 last_error = exc
                 if attempt >= 3:
-                    raise RuntimeError(f"LLM request failed after {attempt} attempts: {exc}") from exc
+                    raise RuntimeError(
+                        f"LLM request failed after {attempt} attempts: {exc}; url={request_url}; "
+                        f"model={selected_model}; role={role}"
+                    ) from exc
                 time.sleep(1.5 * attempt)
             except RuntimeError as exc:
                 last_error = exc
@@ -75,6 +87,15 @@ class LlmClient:
         if parsed.path.rstrip("/").endswith("/chat/completions"):
             return url
         return f"{url}/chat/completions"
+
+    def _http_error_detail(self, exc: urllib.error.HTTPError) -> str:
+        try:
+            body = exc.read().decode("utf-8", errors="replace").strip()
+        except Exception:
+            body = ""
+        if not body:
+            return exc.reason if isinstance(exc.reason, str) else str(exc.reason)
+        return body[:500]
 
     def mock_completion(self, user_prompt: str) -> str:
         if "本章写作任务" in user_prompt and "连续性资料" in user_prompt:
