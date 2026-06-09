@@ -9,6 +9,15 @@
 
 <form class="panel wide-form" method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/plan">
   <label>章节标题<input name="title" value="{{ plan.title }}" required></label>
+  <label>本章任务<textarea name="unique_task" rows="3">{{ plan.unique_task or '' }}</textarea></label>
+  <label>具体核心事件<textarea name="core_event" rows="3">{{ plan.core_event or '' }}</textarea></label>
+  <label>推进链路<textarea name="tech_progression" rows="3">{{ plan.tech_progression or '' }}</textarea></label>
+  <label>人物职能<textarea name="character_roles" rows="3">{{ plan.character_roles or '' }}</textarea></label>
+  <label>对手/阻力变化<textarea name="antagonist_move" rows="3">{{ plan.antagonist_move or '' }}</textarea></label>
+  <label>外部压力<textarea name="external_pressure" rows="3">{{ plan.external_pressure or '' }}</textarea></label>
+  <label>状态变化<textarea name="irreversible_change" rows="3">{{ plan.irreversible_change or '' }}</textarea></label>
+  <label>结尾交接<textarea name="ending_hook" rows="3">{{ plan.ending_hook or '' }}</textarea></label>
+  <input type="hidden" name="no_repeat_guard" value="{{ plan.no_repeat_guard or '' }}">
   <label>章节目标<textarea name="objective" rows="4">{{ plan.objective }}</textarea></label>
   <label>剧情梗概<textarea name="plot_summary" rows="4">{{ plan.plot_summary or '' }}</textarea></label>
   <label>允许推进/揭示<textarea name="allowed_reveals" rows="4">{{ plan.allowed_reveals }}</textarea></label>

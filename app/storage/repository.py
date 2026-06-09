@@ -23,6 +23,7 @@ ARTIFACT_LABELS = {
     "review": "编辑意见",
     "continuity_patch": "连续性更新建议",
     "generation_error": "生成失败原因",
+    "planning_backup": "旧规划备份",
 }
 
 DEFAULT_AUTHOR = {
@@ -399,6 +400,43 @@ class Repository:
                 self._execute(conn, f"DELETE FROM {table} WHERE book_id = ?", (book_id,))
             self._execute(conn, "DELETE FROM books WHERE id = ?", (book_id,))
 
+    def rebuild_generated_planning_for_all_books(self) -> dict[str, int]:
+        totals = {"books": 0, "backups": 0, "deleted_artifacts": 0, "deleted_plans": 0, "deleted_batches": 0}
+        with self.db.session() as conn:
+            books = self._fetchall(conn, "SELECT id FROM books WHERE status = ?", ("active",))
+            totals["books"] = len(books)
+            for book in books:
+                book_id = int(book["id"])
+                confirmed_sql = "SELECT chapter_no FROM chapter_bodies WHERE book_id = ? AND status IN ('human_confirmed','exported')"
+                old = {
+                    "volumes": self._fetchall(conn, "SELECT * FROM volumes WHERE book_id = ? AND manual_edited = 0", (book_id,)),
+                    "arcs": self._fetchall(conn, "SELECT * FROM story_arcs WHERE book_id = ? AND manual_edited = 0", (book_id,)),
+                    "plans": self._fetchall(conn, f"SELECT * FROM chapter_plans WHERE book_id = ? AND chapter_no NOT IN ({confirmed_sql})", (book_id, book_id)),
+                }
+                if old["volumes"] or old["arcs"] or old["plans"]:
+                    ph = self.db.placeholder()
+                    conn.cursor().execute(
+                        f"INSERT INTO artifacts (book_id, chapter_no, artifact_type, status, content, visibility) VALUES ({ph},{ph},{ph},{ph},{ph},{ph})",
+                        (book_id, None, "planning_backup", "archived", json.dumps(json_safe(old), ensure_ascii=False, indent=2), "internal"),
+                    )
+                    totals["backups"] += 1
+                for artifact_type in ["author_brief", "ref_pack", "draft", "review", "generation_error"]:
+                    cur = self._execute(conn, f"DELETE FROM artifacts WHERE book_id = ? AND artifact_type = ? AND chapter_no NOT IN ({confirmed_sql})", (book_id, artifact_type, book_id))
+                    totals["deleted_artifacts"] += max(0, int(cur.rowcount or 0))
+                self._execute(conn, f"DELETE FROM pipeline_runs WHERE book_id = ? AND chapter_no NOT IN ({confirmed_sql})", (book_id, book_id))
+                self._execute(conn, f"DELETE FROM rewrite_tasks WHERE book_id = ? AND chapter_no NOT IN ({confirmed_sql})", (book_id, book_id))
+                cur = self._execute(conn, f"DELETE FROM chapter_plans WHERE book_id = ? AND chapter_no NOT IN ({confirmed_sql})", (book_id, book_id))
+                totals["deleted_plans"] += max(0, int(cur.rowcount or 0))
+                cur = self._execute(conn, "DELETE FROM chapter_batches WHERE book_id = ?", (book_id,))
+                totals["deleted_batches"] += max(0, int(cur.rowcount or 0))
+                self._execute(conn, "DELETE FROM story_arcs WHERE book_id = ? AND manual_edited = 0", (book_id,))
+                self._execute(conn, "DELETE FROM volumes WHERE book_id = ? AND manual_edited = 0", (book_id,))
+                record = self._fetchone(conn, "SELECT * FROM books WHERE id = ?", (book_id,))
+                if record:
+                    self._seed_volumes_and_units(conn, record)
+                self.log_event(conn, book_id, None, "planning_rebuilt", "已清理旧模板规划和未导出中间产物，保留已确认/已导出正文。")
+        return totals
+
     def update_cover(self, book_id: int, cover_path: str) -> None:
         with self.db.session() as conn:
             self._execute(conn, "UPDATE books SET cover_path = ? WHERE id = ?", (cover_path, book_id))
@@ -510,9 +548,30 @@ class Repository:
         with self.db.session() as conn:
             return self._fetchone(conn, "SELECT cp.*, v.title AS volume_title, a.title AS arc_title FROM chapter_plans cp LEFT JOIN volumes v ON v.id=cp.volume_id LEFT JOIN story_arcs a ON a.id=cp.arc_id WHERE cp.book_id = ? AND cp.chapter_no = ?", (book_id, chapter_no))
 
-    def update_chapter_plan(self, book_id: int, chapter_no: int, title: str, objective: str, allowed_reveals: str, forbidden_reveals: str, pace_limit: str, plot_summary: str = "", target_chars: int = 2600) -> None:
+    def update_chapter_plan(self, book_id: int, chapter_no: int, title: str, objective: str, allowed_reveals: str, forbidden_reveals: str, pace_limit: str, plot_summary: str = "", target_chars: int = 2600, unique_task: str = "", core_event: str = "", tech_progression: str = "", character_roles: str = "", antagonist_move: str = "", external_pressure: str = "", irreversible_change: str = "", ending_hook: str = "", no_repeat_guard: str = "") -> None:
         with self.db.session() as conn:
-            self._execute(conn, """UPDATE chapter_plans SET title = ?, objective = ?, allowed_reveals = ?, forbidden_reveals = ?, pace_limit = ?, plot_summary = ?, target_chars = ? WHERE book_id = ? AND chapter_no = ?""", (title.strip(), objective.strip(), allowed_reveals.strip(), forbidden_reveals.strip(), pace_limit.strip(), plot_summary.strip(), int(target_chars), book_id, chapter_no))
+            current = self._fetchone(conn, "SELECT * FROM chapter_plans WHERE book_id = ? AND chapter_no = ?", (book_id, chapter_no)) or {}
+            values = (
+                title.strip(),
+                objective.strip(),
+                allowed_reveals.strip(),
+                forbidden_reveals.strip(),
+                pace_limit.strip(),
+                plot_summary.strip(),
+                int(target_chars),
+                (unique_task or current.get("unique_task") or "").strip(),
+                (core_event or current.get("core_event") or "").strip(),
+                (tech_progression or current.get("tech_progression") or "").strip(),
+                (character_roles or current.get("character_roles") or "").strip(),
+                (antagonist_move or current.get("antagonist_move") or "").strip(),
+                (external_pressure or current.get("external_pressure") or "").strip(),
+                (irreversible_change or current.get("irreversible_change") or "").strip(),
+                (ending_hook or current.get("ending_hook") or "").strip(),
+                (no_repeat_guard or current.get("no_repeat_guard") or "").strip(),
+                book_id,
+                chapter_no,
+            )
+            self._execute(conn, """UPDATE chapter_plans SET title = ?, objective = ?, allowed_reveals = ?, forbidden_reveals = ?, pace_limit = ?, plot_summary = ?, target_chars = ?, unique_task = ?, core_event = ?, tech_progression = ?, character_roles = ?, antagonist_move = ?, external_pressure = ?, irreversible_change = ?, ending_hook = ?, no_repeat_guard = ? WHERE book_id = ? AND chapter_no = ?""", values)
             self.log_event(conn, book_id, chapter_no, "chapter_plan_updated", "章节卡片已保存")
 
     def _chapter_numbers_for_batch(self, conn: Any, book_id: int, count: int, volume_id: int | None = None, arc_id: int | None = None) -> list[int]:
@@ -589,19 +648,38 @@ class Repository:
             )
             batch_id = self._last_id(cur)
             target_chars = int(((self._fetchone(conn, "SELECT * FROM production_settings WHERE book_id = ?", (book_id,)) or {}).get("target_chars_max") or 2600))
-            for offset, no in enumerate(numbers, start=1):
-                title = f"第{no}章 待命名"
-                objective = f"服务《{arc['title']}》第{offset}/{count}步：承接单元起因，推进经过，并为结果兑现蓄力。"
-                plot = f"{arc.get('cause') or '单元压力出现'}；{arc.get('process') or '主角行动推进'}；本章留下下一步钩子。"
-                existing = self._fetchone(conn, "SELECT id FROM chapter_plans WHERE book_id = ? AND chapter_no = ?", (book_id, no))
+            for no in numbers:
+                existing = self._fetchone(conn, "SELECT * FROM chapter_plans WHERE book_id = ? AND chapter_no = ?", (book_id, no))
                 if existing:
                     self._execute(conn, "UPDATE chapter_plans SET batch_id = ?, volume_id = ?, arc_id = ? WHERE book_id = ? AND chapter_no = ?", (batch_id, volume["id"], arc["id"], book_id, no))
                 else:
                     cur.execute(
                         f"""INSERT INTO chapter_plans
-                        (book_id, volume_id, arc_id, batch_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars)
-                        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
-                        (book_id, volume["id"], arc["id"], batch_id, no, title, objective, "只揭示本章角色可见信息，服务当前单元。", "不能越级解释世界观、提前完成卷级目标或全书终局。", "全书大纲 > 卷纲 > 单元纲 > 章节细纲；本章不得脱离当前单元因果。", plot, target_chars),
+                        (book_id, volume_id, arc_id, batch_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars, unique_task, core_event, tech_progression, character_roles, antagonist_move, external_pressure, irreversible_change, ending_hook, no_repeat_guard)
+                        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                        (
+                            book_id,
+                            volume["id"],
+                            arc["id"],
+                            batch_id,
+                            no,
+                            f"第{no}章 待规划",
+                            "待规划 Agent 生成本章细纲。",
+                            "待规划。",
+                            "待规划。",
+                            "待规划。",
+                            "",
+                            target_chars,
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                        ),
                     )
             self._execute(conn, "UPDATE books SET current_chapter_no = ? WHERE id = ?", (end, book_id))
             self.log_event(conn, book_id, None, "chapter_batch_created", f"已创建/复用第 {start}-{end} 章卡片")
@@ -609,6 +687,109 @@ class Repository:
 
     def create_chapter_batch(self, book_id: int, chapter_count: int | None = None, volume_id: int | None = None, arc_id: int | None = None) -> int:
         return self.create_or_reuse_chapter_batch(book_id, chapter_count, volume_id, arc_id)
+
+    def apply_planned_chapter_cards(self, book_id: int, batch_id: int, planned: list[dict[str, Any]]) -> None:
+        if not planned:
+            self.update_batch_status(batch_id, "planning_failed", "章节规划失败，请重试或手写细纲。", "规划 Agent 未返回可用章节细纲。")
+            return
+        by_no = {int(item["chapter_no"]): item for item in planned if int(item.get("chapter_no") or 0)}
+        with self.db.session() as conn:
+            rows = self._fetchall(conn, "SELECT * FROM chapter_plans WHERE book_id = ? AND batch_id = ? ORDER BY chapter_no", (book_id, batch_id))
+            for row in rows:
+                item = by_no.get(int(row["chapter_no"]))
+                if not item:
+                    continue
+                target_chars = int(item.get("target_chars") or row.get("target_chars") or 2600)
+                self._execute(
+                    conn,
+                    """UPDATE chapter_plans SET title=?, objective=?, allowed_reveals=?, forbidden_reveals=?, pace_limit=?, plot_summary=?, target_chars=?, unique_task=?, core_event=?, tech_progression=?, character_roles=?, antagonist_move=?, external_pressure=?, irreversible_change=?, ending_hook=?, no_repeat_guard=? WHERE book_id=? AND chapter_no=?""",
+                    (
+                        row["title"] if str(row.get("title") or "").strip() and "待规划" not in str(row.get("title") or "") else item.get("title", row["title"]),
+                        item.get("objective", ""),
+                        item.get("allowed_reveals", ""),
+                        item.get("forbidden_reveals", ""),
+                        item.get("pace_limit", ""),
+                        item.get("plot_summary", ""),
+                        target_chars,
+                        item.get("unique_task", ""),
+                        item.get("core_event", ""),
+                        item.get("tech_progression", ""),
+                        item.get("character_roles", ""),
+                        item.get("antagonist_move", ""),
+                        item.get("external_pressure", ""),
+                        item.get("irreversible_change", ""),
+                        item.get("ending_hook", ""),
+                        item.get("no_repeat_guard", ""),
+                        book_id,
+                        int(row["chapter_no"]),
+                    ),
+                )
+            self._execute(conn, "UPDATE chapter_batches SET status = ?, progress_message = ?, error = ? WHERE id = ?", ("planning", "章节卡片已由规划 Agent 生成，等待作者确认。", "", batch_id))
+            self.log_event(conn, book_id, None, "chapter_batch_planned", "章节批次已完成顺序细纲规划")
+
+    def _fill_missing_chapter_structure(self, conn: Any, book_id: int, chapter_no: int, structure: dict[str, str]) -> None:
+        current = self._fetchone(conn, "SELECT * FROM chapter_plans WHERE book_id = ? AND chapter_no = ?", (book_id, chapter_no)) or {}
+        old_template = "承接单元起因，推进经过，并为结果兑现蓄力"
+        updates: dict[str, str] = {}
+        for field in ["unique_task", "core_event", "tech_progression", "character_roles", "antagonist_move", "external_pressure", "irreversible_change", "ending_hook", "no_repeat_guard"]:
+            if not str(current.get(field) or "").strip():
+                updates[field] = structure[field]
+        if old_template in str(current.get("objective") or ""):
+            updates["objective"] = structure["objective"]
+        if not str(current.get("plot_summary") or "").strip() or "本章留下下一步钩子" in str(current.get("plot_summary") or ""):
+            updates["plot_summary"] = structure["plot_summary"]
+        if not updates:
+            return
+        set_clause = ", ".join(f"{field} = ?" for field in updates)
+        values = list(updates.values()) + [book_id, chapter_no]
+        self._execute(conn, f"UPDATE chapter_plans SET {set_clause} WHERE book_id = ? AND chapter_no = ?", values)
+
+    def _build_chapter_structure(self, conn: Any, book_id: int, volume: dict[str, Any], arc: dict[str, Any], chapter_no: int, offset: int, count: int) -> dict[str, str]:
+        previous = self._fetchone(conn, "SELECT title, core_event, tech_progression, irreversible_change, ending_hook FROM chapter_plans WHERE book_id = ? AND chapter_no < ? ORDER BY chapter_no DESC LIMIT 1", (book_id, chapter_no)) or {}
+        characters = self._fetchall(conn, "SELECT name, role_type FROM characters WHERE book_id = ? ORDER BY id LIMIT 4", (book_id,))
+        char_names = [row["name"] for row in characters if row.get("name")]
+        lead = char_names[0] if char_names else "主角"
+        support = "、".join(char_names[1:3]) if len(char_names) > 1 else "关键同伴"
+        phase = [
+            ("确认上一章后果", "把上一章结尾造成的损失、承诺或新线索落到具体行动上", "复盘上一章结果，排除一个错误方向，确定本章试验/行动入口"),
+            ("提出修正方案", "用新判断改写原计划，并让支持角色承担验证、协调或牺牲职能", "根据异常线索提出修正方案，同时暴露新的限制条件"),
+            ("遭遇升级阻力", "让外部压力或对手动作改变资源、时间或权限条件", "新方案在更高压力下试运行，出现不同于上一章的新故障"),
+            ("完成阶段兑现", "让本单元目标产生可见结果，并留下下一阶段代价", "验证修正方向，得到新参数/新证据/新权限，同时付出代价"),
+            ("转入下一问题", "把小胜利转化为更大的外部问题或组织升级", "把阶段成果交给团队消化，打开下一层技术难题"),
+        ][(offset - 1) % 5]
+        title = f"第{chapter_no}章 {phase[0]}"
+        arc_goal = arc.get("goal") or "完成当前单元推进"
+        cause = arc.get("cause") or arc.get("pressure") or "上一章结果带来新压力"
+        process = arc.get("process") or "主角通过判断、行动和验证推进局势"
+        result = arc.get("result") or "形成阶段结果并留下代价"
+        payoff = arc.get("payoff") or "用具体行动兑现爽点"
+        prev_hook = previous.get("ending_hook") or previous.get("irreversible_change") or "上一章留下的未解决钩子"
+        core_event = f"{lead}围绕“{phase[0]}”处理{prev_hook}，把{cause}推进到一次具体行动。"
+        unique_task = f"本章只完成一件事：{phase[1]}。不得重复上一章事件：{previous.get('core_event', '无')}。"
+        tech_progression = f"{phase[2]}；技术/方案链条必须从“{process}”推进到“{result}”，不能再次证明同一个旧结论。"
+        character_roles = f"{lead}负责判断和承担代价；{support}负责验证、协调、反证或提出边界；阻力人物必须改变压力方式。"
+        antagonist_move = "阻力不重复上一章，必须从质疑数据、限制资源、改变期限、提出替代方案、引入外部压力中选择新的动作。"
+        external_pressure = f"外部压力来自{volume.get('core_conflict') or arc.get('pressure') or '资源、期限、组织后果或更高层需求'}，必须具体落到本章行动。"
+        irreversible_change = f"本章结束必须改变至少一项：权限、资源、技术认知、人物关系、外部局势或代价；默认落点为{result}。"
+        ending_hook = f"章末钩子要具体指向下一步问题：{payoff}之后暴露的新限制、代价或外部动作。"
+        no_repeat_guard = "禁止重复上一章的核心事件、同一试验目标、同一阻力逻辑、同类章末意象；不得回退已经获得的权限、资源、承诺或技术结论。"
+        return {
+            "title": title,
+            "objective": f"{unique_task}\n{irreversible_change}",
+            "plot_summary": f"{core_event}\n{tech_progression}\n{ending_hook}",
+            "allowed_reveals": "只揭示本章角色已经看见、验证或付出代价得到的信息。",
+            "forbidden_reveals": "禁止提前完成卷级/全书目标；禁止把已完成事项重新当作新目标。",
+            "pace_limit": "从上一章结尾状态直接续写，先处理后果，再推进新行动，最后留下具体代价或钩子。",
+            "unique_task": unique_task,
+            "core_event": core_event,
+            "tech_progression": tech_progression,
+            "character_roles": character_roles,
+            "antagonist_move": antagonist_move,
+            "external_pressure": external_pressure,
+            "irreversible_change": irreversible_change,
+            "ending_hook": ending_hook,
+            "no_repeat_guard": no_repeat_guard,
+        }
 
     def delete_chapter(self, book_id: int, chapter_no: int) -> dict[str, Any]:
         with self.db.session() as conn:

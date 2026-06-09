@@ -395,8 +395,9 @@ def new_batch_page(request: Request, book_id: int):
 def create_batch(request: Request, book_id: int, chapter_count: int = Form(0), arc_id: int = Form(0), volume_id: int = Form(0)):
     if chapter_count and (chapter_count < 1 or chapter_count > 20):
         return render_error(request, "一次最多只能新建 20 章，最少 1 章。")
-    repo, _ = runtime()
+    repo, pipe = runtime()
     batch_id = repo.create_chapter_batch(book_id, chapter_count or None, volume_id or None, arc_id or None)
+    pipe.plan_batch(book_id, batch_id)
     return RedirectResponse(f"/books/{book_id}/chapter-batches/{batch_id}", status_code=303)
 
 
@@ -459,9 +460,9 @@ def chapter_detail(request: Request, book_id: int, chapter_no: int):
 
 
 @app.post("/books/{book_id}/chapters/{chapter_no}/plan")
-def update_chapter_plan(book_id: int, chapter_no: int, title: str = Form(...), objective: str = Form(...), allowed_reveals: str = Form(""), forbidden_reveals: str = Form(""), pace_limit: str = Form(""), plot_summary: str = Form(""), target_chars: int = Form(2600)):
+def update_chapter_plan(book_id: int, chapter_no: int, title: str = Form(...), objective: str = Form(...), allowed_reveals: str = Form(""), forbidden_reveals: str = Form(""), pace_limit: str = Form(""), plot_summary: str = Form(""), target_chars: int = Form(2600), unique_task: str = Form(""), core_event: str = Form(""), tech_progression: str = Form(""), character_roles: str = Form(""), antagonist_move: str = Form(""), external_pressure: str = Form(""), irreversible_change: str = Form(""), ending_hook: str = Form(""), no_repeat_guard: str = Form("")):
     repo, _ = runtime()
-    repo.update_chapter_plan(book_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars)
+    repo.update_chapter_plan(book_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars, unique_task, core_event, tech_progression, character_roles, antagonist_move, external_pressure, irreversible_change, ending_hook, no_repeat_guard)
     plan = repo.get_chapter_plan_row(book_id, chapter_no) or {}
     batch_id = plan.get("batch_id")
     target = f"/books/{book_id}/chapter-batches/{batch_id}" if batch_id else f"/books/{book_id}/outline"

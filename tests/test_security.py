@@ -13,7 +13,9 @@ class SecurityTests(unittest.TestCase):
         self.assertIn(".env", gitignore)
         example = (ROOT / ".env.example").read_text(encoding="utf-8")
         self.assertIn("MYSQL_PASSWORD=", example)
-        self.assertIn("ZHIPUAI_API_KEY=", example)
+        self.assertIn("LLM_API_KEY=", example)
+        self.assertIn("LLM_OUTLINE_MODEL=qwen-max", example)
+        self.assertNotIn("ZHIPUAI_API_KEY=", example)
         forbidden_literals = ["230" + "17330", "sk-", "apikey"]
         for literal in forbidden_literals:
             self.assertNotIn(literal, example.lower())

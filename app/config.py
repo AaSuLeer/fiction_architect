@@ -30,10 +30,13 @@ class Settings:
     mysql_user: str
     mysql_password: str
     mysql_database: str
-    zhipu_api_key: str
-    zhipu_base_url: str
-    zhipu_model: str
-    zhipu_timeout: int
+    llm_api_key: str
+    llm_base_url: str
+    llm_default_model: str
+    llm_outline_model: str
+    llm_writer_model: str
+    llm_editor_model: str
+    llm_timeout: int
     llm_mode: str
     app_host: str
     app_port: int
@@ -45,8 +48,11 @@ class Settings:
 
 def get_settings() -> Settings:
     load_env()
-    zhipu_api_key = os.getenv("ZHIPUAI_API_KEY", "")
-    llm_mode = os.getenv("LLM_MODE", "zhipu" if zhipu_api_key else "mock").lower()
+    llm_api_key = os.getenv("LLM_API_KEY") or os.getenv("ZHIPUAI_API_KEY", "")
+    raw_mode = (os.getenv("LLM_MODE") or "").strip()
+    mode_as_model = raw_mode and raw_mode.lower() not in {"mock", "openai", "compatible", "zhipu"}
+    default_model = os.getenv("LLM_DEFAULT_MODEL") or os.getenv("ZHIPUAI_MODEL") or (raw_mode if mode_as_model else "glm-4.5")
+    llm_mode = "openai" if mode_as_model else (raw_mode or ("openai" if llm_api_key else "mock")).lower()
     sqlite_value = os.getenv("SQLITE_PATH", "").strip()
     if sqlite_value:
         sqlite_path = Path(sqlite_value)
@@ -62,10 +68,13 @@ def get_settings() -> Settings:
         mysql_user=os.getenv("MYSQL_USER", ""),
         mysql_password=os.getenv("MYSQL_PASSWORD", ""),
         mysql_database=os.getenv("MYSQL_DATABASE", "fiction_architect"),
-        zhipu_api_key=zhipu_api_key,
-        zhipu_base_url=os.getenv("ZHIPUAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
-        zhipu_model=os.getenv("ZHIPUAI_MODEL", "glm-4.5"),
-        zhipu_timeout=int(os.getenv("ZHIPUAI_TIMEOUT", "60")),
+        llm_api_key=llm_api_key,
+        llm_base_url=os.getenv("LLM_BASE_URL") or os.getenv("ZHIPUAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
+        llm_default_model=default_model,
+        llm_outline_model=os.getenv("LLM_OUTLINE_MODEL", "qwen-max"),
+        llm_writer_model=os.getenv("LLM_WRITER_MODEL", default_model),
+        llm_editor_model=os.getenv("LLM_EDITOR_MODEL", default_model),
+        llm_timeout=int(os.getenv("LLM_TIMEOUT") or os.getenv("ZHIPUAI_TIMEOUT", "60")),
         llm_mode=llm_mode,
         app_host=os.getenv("APP_HOST", "127.0.0.1"),
         app_port=int(os.getenv("APP_PORT", "8010")),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -12,45 +13,57 @@ class LlmClient:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def complete(self, system_prompt: str, user_prompt: str) -> str:
-        if self.settings.llm_mode != "zhipu" or not self.settings.zhipu_api_key:
+    def complete(self, system_prompt: str, user_prompt: str, model: str | None = None, role: str = "default") -> str:
+        if self.settings.llm_mode == "mock" or not self.settings.llm_api_key:
             return self.mock_completion(user_prompt)
+        selected_model = model or self._model_for_role(role)
         payload = {
-            "model": self.settings.zhipu_model,
+            "model": selected_model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             "temperature": 0.82,
         }
         request = urllib.request.Request(
-            self.settings.zhipu_base_url,
+            self.settings.llm_base_url,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": f"Bearer {self.settings.zhipu_api_key}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {self.settings.llm_api_key}", "Content-Type": "application/json"},
             method="POST",
         )
         last_error: BaseException | None = None
         for attempt in range(1, 4):
             try:
-                with urllib.request.urlopen(request, timeout=self.settings.zhipu_timeout) as response:
+                with urllib.request.urlopen(request, timeout=self.settings.llm_timeout) as response:
                     body = json.loads(response.read().decode("utf-8"))
                 choices = body.get("choices") or []
                 if not choices:
-                    raise RuntimeError("Zhipu response did not contain choices.")
+                    raise RuntimeError("LLM response did not contain choices.")
                 content = choices[0].get("message", {}).get("content", "")
                 if not content.strip():
-                    raise RuntimeError("Zhipu response content was empty.")
+                    raise RuntimeError("LLM response content was empty.")
                 return content
             except (TimeoutError, OSError, urllib.error.URLError) as exc:
                 last_error = exc
                 if attempt >= 3:
-                    raise RuntimeError(f"Zhipu request failed after {attempt} attempts: {exc}") from exc
+                    raise RuntimeError(f"LLM request failed after {attempt} attempts: {exc}") from exc
                 time.sleep(1.5 * attempt)
             except RuntimeError as exc:
                 last_error = exc
                 if attempt >= 3:
                     raise
                 time.sleep(1.5 * attempt)
-        raise RuntimeError(f"Zhipu request failed: {last_error}")
+        raise RuntimeError(f"LLM request failed: {last_error}")
+
+    def _model_for_role(self, role: str) -> str:
+        if role == "outline":
+            return self.settings.llm_outline_model
+        if role == "writer":
+            return self.settings.llm_writer_model
+        if role == "editor":
+            return self.settings.llm_editor_model
+        return self.settings.llm_default_model
 
     def mock_completion(self, user_prompt: str) -> str:
+        if "本章写作任务" in user_prompt and "连续性资料" in user_prompt:
+            return self._mock_story_from_prompt(user_prompt)
         paragraphs = [
             "林砚站在验词台前，木牌上的倒计时只剩三十息。台下三百名新生全看着他，名单最后一页被红印压住，三个字像钉子一样扎在纸面上：无效新生。",
             "考官把红印往前推了半寸。按废校校规，无效新生不能入门，不能补考，不能申辩；若在铃响前仍站在台上，就按冒名顶替处置，扣掉三年宿数。",
@@ -94,3 +107,37 @@ class LlmClient:
             "他赢下了入门的一步，也欠下了第一笔账。三日之后，废校会连本带利地来收。",
         ]
         return "\n\n".join(paragraphs)
+
+    def _mock_story_from_prompt(self, user_prompt: str) -> str:
+        def field(name: str, default: str = "") -> str:
+            match = re.search(rf'"{name}"\s*:\s*"((?:\\.|[^"\\])*)"', user_prompt)
+            if not match:
+                return default
+            try:
+                return json.loads(f'"{match.group(1)}"')
+            except json.JSONDecodeError:
+                return match.group(1)
+
+        title = field("chapter_title", field("title", "本章"))
+        core_event = field("core_event", "主角执行本章细纲中的核心事件")
+        unique_task = field("unique_task", core_event)
+        plot_summary = field("plot_summary", core_event)
+        progression = field("tech_progression", field("progression", "局势按细纲推进"))
+        character_roles = field("character_roles", "主角承担本章行动，关键同伴推动现场变化")
+        ending = field("ending_hook", "本章结果自然交接到下一章")
+        previous = field("previous_chapter_body", "")
+        start = f"上一章的余波还没有散去，{previous[-120:]}" if previous else f"{title}开始时，局势已经压到主角眼前。"
+        paragraphs = [
+            start,
+            f"{core_event}。这不是旁支事件，而是本章必须处理的现场问题。",
+            f"主角先确认{unique_task}，随后把注意力落到最能改变局面的证据、人物和行动上。",
+            f"{character_roles}。每个人的动作都围绕同一个目标展开，没有离开当前卷纲和单元纲。",
+            f"推进链路很清楚：{progression}。主角没有绕开因果，也没有把后文答案提前说完。",
+            f"事情的经过继续落到具体选择上：{plot_summary}。",
+            "阻力并没有凭空消失，它换成更现实的限制，让主角必须在代价和机会之间做判断。",
+            f"到本章末尾，{ending}。正文停在这个结果上，让下一章能够从这里继续。",
+        ]
+        body = "\n\n".join(paragraphs)
+        while len("".join(body.split())) < 1800:
+            body += "\n\n" + f"{core_event}继续向前压了一步，主角根据{progression}做出新判断，现场关系和局势因此发生变化。"
+        return body

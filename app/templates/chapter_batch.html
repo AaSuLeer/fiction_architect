@@ -41,6 +41,10 @@
       </span>
     </div>
     <p class="muted">{{ plan.volume_title or "未归卷" }} / {{ plan.arc_title or "未归单元" }}</p>
+    <p><strong>本章任务：</strong>{{ plan.unique_task or "未设置" }}</p>
+    <p><strong>推进链路：</strong>{{ plan.tech_progression or "未设置" }}</p>
+    <p><strong>状态变化：</strong>{{ plan.irreversible_change or "未设置" }}</p>
+    <p><strong>结尾交接：</strong>{{ plan.ending_hook or "未设置" }}</p>
     <p class="scroll-line">{{ plan.plot_summary or plan.objective }}</p>
     <div class="chapter-card-foot">
       <span>目标 {{ plan.target_chars or 2600 }} 字</span>

@@ -6,6 +6,7 @@ from app.llm import LlmClient, TextGuard
 from app.services.author_room import AuthorRoom
 from app.services.continuity_studio import ContinuityStudio
 from app.services.editorial_department import EditorialDepartment
+from app.services.planning_agent import PlanningAgent
 from app.services.writing_department import WritingDepartment
 from app.storage.repository import Repository
 
@@ -15,6 +16,7 @@ class Pipeline:
         self.repo = repo
         self.author_room = AuthorRoom(repo)
         self.continuity = ContinuityStudio(repo)
+        self.planner = PlanningAgent(repo, llm)
         self.writer = WritingDepartment(repo, llm)
         self.editorial = EditorialDepartment(repo, TextGuard())
 
@@ -24,6 +26,8 @@ class Pipeline:
     def generate_chapter(self, book_id: int, chapter_no: int, rewrite_feedback: str = "") -> dict[str, object]:
         run_id = self.repo.create_run(book_id, chapter_no)
         try:
+            self._auto_plan_if_needed(book_id, chapter_no)
+            self._ensure_chapter_plan_ready(book_id, chapter_no)
             brief = self.author_room.build_brief(book_id, chapter_no)
             ref_pack = self.continuity.build_ref_pack(book_id, chapter_no, run_id)
             draft = self.writer.draft(book_id, chapter_no, brief.id, ref_pack.id, rewrite_feedback)
@@ -36,6 +40,35 @@ class Pipeline:
             failure = self.repo.create_artifact(book_id, chapter_no, "generation_error", "failed", message)
             self.repo.finish_run(run_id, book_id, chapter_no, "failed")
             return {"run_id": run_id, "status": "failed", "error": message, "failure": failure}
+
+    def _auto_plan_if_needed(self, book_id: int, chapter_no: int) -> None:
+        plan = self.repo.get_chapter_plan_row(book_id, chapter_no)
+        if not plan:
+            return
+        text = "\n".join(str(plan.get(field) or "") for field in ["objective", "plot_summary", "unique_task", "core_event"])
+        if "待规划" in text and plan.get("batch_id"):
+            self.plan_batch(book_id, int(plan["batch_id"]))
+
+    def plan_batch(self, book_id: int, batch_id: int) -> list[dict[str, object]]:
+        try:
+            return self.planner.plan_chapter_batch(book_id, batch_id)
+        except Exception as exc:
+            self.repo.update_batch_status(batch_id, "planning_failed", "章节规划失败，请重试或手写细纲。", f"{type(exc).__name__}: {exc}")
+            return []
+
+    def _ensure_chapter_plan_ready(self, book_id: int, chapter_no: int) -> None:
+        plan = self.repo.get_chapter_plan_row(book_id, chapter_no)
+        if not plan:
+            raise ValueError("章节细纲不存在，无法生成正文。")
+        blocked = [
+            "待规划",
+            "待规划 Agent 生成本章细纲",
+            "承接单元起因，推进经过，并为结果兑现蓄力",
+            "本章留下下一步钩子",
+        ]
+        text = "\n".join(str(plan.get(field) or "") for field in ["objective", "plot_summary", "unique_task", "core_event"])
+        if not str(plan.get("core_event") or "").strip() or any(item in text for item in blocked):
+            raise ValueError("本章细纲仍为空或为旧模板，请先生成或手动完善章节细纲。")
 
     def _finalize_review(self, book_id: int, chapter_no: int, review) -> dict[str, object]:
         data = json.loads(review.content)
@@ -86,13 +119,41 @@ class Pipeline:
                     if result.get("status") == "approved":
                         break
             results.append(result)
+            if result.get("status") != "approved":
+                reason = self._result_failure_reason(result)
+                self.repo.update_batch_status(batch_id, "waiting_previous_fix", f"第 {plan['chapter_no']} 章未通过，后续章节等待本章修复。", f"stopped_on_chapter={plan['chapter_no']}; {reason}")
+                return results
         failed = [r for r in results if r.get("status") != "approved"]
-        self.repo.update_batch_status(batch_id, "manual_required" if failed else "editor_approved", "部分章节需要人工处理。" if failed else "生成完成，等待人工确认正文。")
+        self.repo.update_batch_status(batch_id, "manual_required" if failed else "linear_completed", "部分章节需要人工处理。" if failed else "线性生成完成，等待人工确认正文。")
         return results
 
     def generate_next_three(self, book_id: int) -> list[dict[str, object]]:
         batch_id = self.repo.create_chapter_batch(book_id)
+        self.plan_batch(book_id, batch_id)
         return self.generate_batch(book_id, batch_id)
+
+    def _result_failure_reason(self, result: dict[str, object]) -> str:
+        if result.get("error"):
+            return str(result["error"])[:800]
+        review_data = result.get("review_data")
+        if isinstance(review_data, dict):
+            problems = review_data.get("problems") or review_data.get("notes") or []
+            if isinstance(problems, list) and problems:
+                return "；".join(str(item) for item in problems[:5])[:800]
+            if review_data.get("status"):
+                return f"review_status={review_data.get('status')}"
+        review = result.get("review")
+        if review is not None:
+            content = getattr(review, "content", "")
+            if content:
+                try:
+                    data = json.loads(content)
+                    problems = data.get("problems") or data.get("notes") or []
+                    if isinstance(problems, list) and problems:
+                        return "；".join(str(item) for item in problems[:5])[:800]
+                except Exception:
+                    return str(content)[:800]
+        return f"status={result.get('status')}"
 
     def manual_approve(self, book_id: int, chapter_no: int) -> dict[str, object]:
         body = self.repo.get_chapter_body(book_id, chapter_no)

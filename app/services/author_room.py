@@ -58,12 +58,21 @@ class AuthorRoom:
                 "recommended_chapters": unit.get("recommended_chapters", 5),
             },
             "chapter_control": {
+                "unique_task": plan.get("unique_task", ""),
+                "core_event": plan.get("core_event", ""),
+                "tech_progression": plan.get("tech_progression", ""),
+                "character_roles": plan.get("character_roles", ""),
+                "antagonist_move": plan.get("antagonist_move", ""),
+                "external_pressure": plan.get("external_pressure", ""),
+                "irreversible_change": plan.get("irreversible_change", ""),
+                "ending_hook": plan.get("ending_hook", ""),
+                "no_repeat_guard": plan.get("no_repeat_guard", ""),
                 "objective": plan["objective"],
                 "plot_summary": plan.get("plot_summary", ""),
                 "allowed_reveals": plan["allowed_reveals"],
                 "forbidden_reveals": plan["forbidden_reveals"],
                 "pace_limit": plan["pace_limit"],
             },
-            "story_shape": "必须有起因、经过、结果；爽点来自行动和局势变化；结尾留下代价或新钩子。",
+            "story_shape": "严格执行本章细纲，从上一章结尾状态自然续写；第 1 章无上一章时，从开书设定和本章细纲进入正文。",
         }
         return self.repo.create_artifact(book_id, chapter_no, "author_brief", "ready", json.dumps(json_safe(brief), ensure_ascii=False, indent=2))

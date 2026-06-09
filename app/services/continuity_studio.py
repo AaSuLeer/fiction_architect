@@ -52,6 +52,8 @@ class ContinuityStudio:
         tiered = recent + self.repo.list_memories(book_id, "unit_memory", 8) + self.repo.list_memories(book_id, "volume_memory", 4) + self.repo.list_memories(book_id, "quarter_memory", 2) + self.repo.list_memories(book_id, "year_memory", 2)
         atoms = [atom for atom in self.repo.list_atoms(book_id, status="approved") if int(atom.get("visible_after_chapter") or 0) <= chapter_no]
         selected_memories, selected_atoms, reason = self.compressor.select(tiered, atoms, query)
+        previous_context = self._previous_chapter_context(book_id, chapter_no)
+        function_history = self._function_history(book_id, chapter_no)
         log = self.repo.create_retrieval_log(book_id, chapter_no, query, [int(m["id"]) for m in selected_memories], [int(a["id"]) for a in selected_atoms], reason, run_id)
         ref_pack = {
             "name": "连续性资料",
@@ -63,6 +65,11 @@ class ContinuityStudio:
             },
             "canon_ledger": ctx["canon"],
             "characters": ctx["characters"],
+            "previous_chapter_body": previous_context["body_excerpt"],
+            "previous_chapter_terminal_state": previous_context["terminal_state"],
+            "completed_function_history": function_history["completed"],
+            "forbidden_repetition": function_history["forbidden_repetition"],
+            "temporary_linear_context": previous_context["temporary_linear_context"],
             "selected_memories": [self._memory_prompt_view(item) for item in selected_memories],
             "selected_atoms": [self._atom_prompt_view(item) for item in selected_atoms],
             "retrieval_log_id": log["id"],
@@ -75,6 +82,57 @@ class ContinuityStudio:
             ],
         }
         return self.repo.create_artifact(book_id, chapter_no, "ref_pack", "ready", json.dumps(json_safe(ref_pack), ensure_ascii=False, indent=2))
+
+    def _previous_chapter_context(self, book_id: int, chapter_no: int) -> dict:
+        if chapter_no <= 1:
+            return {"body_excerpt": "", "terminal_state": "首章无上一章正文。", "temporary_linear_context": ""}
+        previous = self.repo.get_chapter_body(book_id, chapter_no - 1)
+        if not previous:
+            draft = self.repo.latest_artifact(book_id, chapter_no - 1, "draft")
+            body = draft.content if draft and draft.status in {"editor_approved", "drafted"} else ""
+            status = draft.status if draft else "missing"
+        else:
+            body = previous.get("body") or ""
+            status = previous.get("status") or ""
+        excerpt = self._body_excerpt(body, 5600)
+        tail = self._compact_text(body, 900)
+        return {
+            "body_excerpt": excerpt,
+            "terminal_state": f"上一章状态：{status}；结尾状态节选：{tail}",
+            "temporary_linear_context": "该内容用于本批次线性续写；只有人工确认并导出后才写回正式连续性。",
+        }
+
+    def _body_excerpt(self, body: str, limit: int) -> str:
+        compact = " ".join((body or "").split())
+        if len(compact) <= limit:
+            return compact
+        head = compact[:1800]
+        middle_start = max(1800, len(compact) // 2 - 900)
+        middle = compact[middle_start:middle_start + 1800]
+        tail = compact[-1600:]
+        return f"{head}\n...\n{middle}\n...\n{tail}"
+
+    def _function_history(self, book_id: int, chapter_no: int) -> dict:
+        start = max(1, chapter_no - 5)
+        rows = [self.repo.get_chapter_plan_row(book_id, no) for no in range(start, chapter_no)]
+        rows = [row for row in rows if row]
+        completed = []
+        forbidden = []
+        for row in rows:
+            completed.append(
+                {
+                    "chapter_no": row.get("chapter_no"),
+                    "unique_task": row.get("unique_task") or row.get("objective", ""),
+                    "core_event": row.get("core_event") or "",
+                    "tech_progression": row.get("tech_progression") or "",
+                    "irreversible_change": row.get("irreversible_change") or "",
+                    "ending_hook": row.get("ending_hook") or "",
+                }
+            )
+            guard = row.get("no_repeat_guard") or row.get("core_event") or row.get("unique_task") or ""
+            if guard:
+                forbidden.append(f"不要重复第 {row.get('chapter_no')} 章：{guard}")
+        return {"completed": completed, "forbidden_repetition": forbidden}
 
     def _memory_prompt_view(self, memory: dict) -> dict:
         content = str(memory.get("content") or "")
