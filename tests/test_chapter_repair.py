@@ -85,6 +85,27 @@ class ChapterRepairTests(unittest.TestCase):
         self.assertEqual("2026-06-09T01:02:03+00:00", payload["created_at"])
         self.assertEqual("2026-06-09T01:02:03+00:00", payload["items"][0]["updated_at"])
 
+    def test_import_profiles_accepts_markdown_json_fence(self):
+        with IsolatedEnv():
+            repo = self.repo()
+            ids = repo.import_profiles(
+                "authors",
+                """```json id="author_skill_new_writer"
+{
+  "name": "测试代码块作者",
+  "genre": "都市幻想",
+  "pov_preference": "third_limited",
+  "sentence_rhythm": "长短句自然混合",
+  "dialogue_style": "潜台词",
+  "payoff_preference": "克制兑现",
+  "forbidden_items": "说明书式设定",
+  "prompt_rules": "只输出正文"
+}
+```""",
+            )
+            profile = repo.get_profile("authors", ids[0])
+            self.assertEqual("测试代码块作者", profile["name"])
+
 
 if __name__ == "__main__":
     unittest.main()

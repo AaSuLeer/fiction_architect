@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -691,9 +692,18 @@ class Repository:
             self._execute(conn, f"DELETE FROM {table} WHERE id = ?", (profile_id,))
 
     def import_profiles(self, kind: str, json_text: str) -> list[int]:
-        payload = json.loads(json_text)
+        payload = json.loads(self._extract_json_payload(json_text))
         items = payload if isinstance(payload, list) else [payload]
         return [self.save_profile(kind, item) for item in items]
+
+    def _extract_json_payload(self, text: str) -> str:
+        cleaned = (text or "").strip().lstrip("\ufeff")
+        if not cleaned:
+            raise ValueError("JSON 内容为空。请粘贴单个 JSON 对象、JSON 数组，或 Markdown ```json 代码块。")
+        fenced = re.search(r"```(?:json)?(?:\s+[^\n`]*)?\s*\n(?P<body>.*?)\n```", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        if fenced:
+            cleaned = fenced.group("body").strip()
+        return cleaned
 
     def update_book_author_profile(self, book_id: int, data: dict[str, Any]) -> None:
         fields = ["name", "genre", "pov_preference", "sentence_rhythm", "dialogue_style", "payoff_preference", "forbidden_items", "prompt_rules", "sample_summary"]
