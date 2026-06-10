@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}写作台 - {{ book.title }}{% endblock %}
+{% block content %}
+{% set wb = workbench or {} %}
+<section class="page-head split-head">
+  <div>
+    <p class="eyebrow">Next Chapter Workflow</p>
+    <h1>写作台</h1>
+    <p class="muted">正式写作一次只推进一章。上一章未发布时，下一章不能进入 drafting。</p>
+  </div>
+  <a class="secondary-action" href="/books/{{ book.id }}/plan">规划候选章节</a>
+</section>
+
+<section class="progress-panel" data-progress-panel hidden>
+  <div class="progress-bar"><span data-progress-bar></span></div>
+  <p data-progress-text>检查上一章发布门禁...</p>
+</section>
+
+<section class="workbench-grid">
+  <div class="panel status-panel">
+    <h2>当前 active chapter</h2>
+    {% if wb.active %}
+    <div class="status-card">
+      <strong>第 {{ wb.active.chapter_no }} 章</strong>
+      <span>{{ wb.active.status }}</span>
+      <p class="muted">{{ wb.active.mission or wb.active.definition_of_done or "等待状态机推进。" }}</p>
+    </div>
+    <form method="post" action="/books/{{ book.id }}/workflow/draft-next" data-progress-form data-progress-stages="检查上一章是否 published|构建 construction packet|调用 Writer 生成正文|调用 Editor 审稿|写入结构化返工单或待确认正文">
+      <input type="hidden" name="chapter_no" value="{{ wb.active.chapter_no }}">
+      <button type="submit">继续推进本章</button>
+    </form>
+    {% else %}
+    <p class="muted">没有 active chapter。可以从候选队列推进第一张候选卡。</p>
+    {% if candidates %}
+    <form method="post" action="/books/{{ book.id }}/workflow/draft-next" data-progress-form data-progress-stages="提升候选卡为 chapter_task|检查发布门禁|构建施工包|生成正文|编辑审核">
+      <input type="hidden" name="chapter_no" value="{{ candidates[0].chapter_no }}">
+      <button type="submit">推进第 {{ candidates[0].chapter_no }} 章</button>
+    </form>
+    {% else %}
+    <a class="primary-action" href="/books/{{ book.id }}/plan">先规划候选章节</a>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>返工单</h2>
+    {% for ticket in rework_tickets %}
+      {% if ticket.status in ["open", "running", "manual_required"] %}
+      <div class="event-row">
+        <strong>第 {{ ticket.chapter_no }} 章 · {{ ticket.route or "未分流" }}</strong>
+        <span>{{ ticket.required_fixes }}</span>
+        <form method="post" action="/books/{{ book.id }}/workflow/rework/{{ ticket.chapter_no }}" data-progress-form>
+          <button type="submit">按返工单重写</button>
+        </form>
+      </div>
+      {% endif %}
+    {% else %}
+    <p class="muted">没有待处理返工。</p>
+    {% endfor %}
+  </div>
+
+  <div class="panel">
+    <h2>候选队列</h2>
+    {% for candidate in candidates[:8] %}
+    <div class="list-row">
+      <span>第 {{ candidate.chapter_no }} 章：{{ candidate.title }}</span>
+      <strong>{{ candidate.status }}</strong>
+    </div>
+    {% else %}
+    <p class="muted">暂无候选章节。</p>
+    {% endfor %}
+  </div>
+
+  <div class="panel">
+    <h2>最近正文状态</h2>
+    {% for body in bodies[-6:] %}
+    <a class="list-row" href="/books/{{ book.id }}/chapters/{{ body.chapter_no }}">
+      <span>第 {{ body.chapter_no }} 章：{{ body.title }}</span>
+      <strong>{{ body.status }}</strong>
+    </a>
+    {% else %}
+    <p class="muted">暂无正文。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="two-col">
+  <div class="panel">
+    <h2>结构化编辑意见</h2>
+    {% for run in workflow_runs %}
+    <div class="event-row">
+      <strong>{{ run.flow_name }} · {{ run.status }}</strong>
+      <span>{{ run.stage }}{% if run.error_message %}：{{ run.error_message }}{% endif %}</span>
+    </div>
+    {% else %}
+    <p class="muted">暂无工作流记录。</p>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <h2>工作流事件</h2>
+    {% for event in workflow_events %}
+    <div class="event-row">
+      <strong>{{ event.event_type }}</strong>
+      <span>{{ event.message }}</span>
+    </div>
+    {% else %}
+    <p class="muted">暂无事件。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

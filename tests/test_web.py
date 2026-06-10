@@ -134,5 +134,21 @@ class WebSmokeTests(unittest.TestCase):
         self.assertIn("新的梗概".encode("utf-8"), page.content)
 
 
+    def test_rebuilt_workbench_routes_are_author_friendly(self):
+        client = TestClient(app)
+        book_id = self.create_book(client)
+        for path, text in [
+            (f"/books/{book_id}", "单书工作台"),
+            (f"/books/{book_id}/plan", "规划台"),
+            (f"/books/{book_id}/write", "写作台"),
+            (f"/books/{book_id}/publish", "发布中心"),
+        ]:
+            response = client.get(path)
+            self.assertEqual(200, response.status_code, path)
+            self.assertIn(text.encode("utf-8"), response.content)
+            for internal_name in [b"ref_pack", b"author_brief"]:
+                self.assertNotIn(internal_name, response.content)
+
+
 if __name__ == "__main__":
     unittest.main()

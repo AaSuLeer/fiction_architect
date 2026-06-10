@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}规划台 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head split-head">
+  <div>
+    <p class="eyebrow">Planner / Outline Agent</p>
+    <h1>规划台</h1>
+    <p class="muted">这里只生成候选章节施工卡。候选卡通过校验后，写作台才能把其中一章提升为 active chapter。</p>
+  </div>
+  <a class="secondary-action" href="/books/{{ book.id }}/write">去写作台</a>
+</section>
+
+<section class="progress-panel" data-progress-panel hidden>
+  <div class="progress-bar"><span data-progress-bar></span></div>
+  <p data-progress-text>读取当前卷、单元和已发布状态...</p>
+</section>
+
+{% set selected = arcs[0] if arcs else None %}
+<section class="two-col">
+  <form class="panel wide-form" method="post" action="/books/{{ book.id }}/workflow/plan-next" data-progress-form data-progress-stages="读取当前卷与相邻边界|检索最近发布状态|调用规划 Agent|校验施工卡 JSON|写入候选队列">
+    <h2>生成候选施工卡</h2>
+    <div class="form-grid">
+      <label>候选章节数
+        <input type="number" name="chapter_count" value="{{ selected.recommended_chapters if selected and selected.recommended_chapters else 1 }}" min="1" max="20">
+      </label>
+      <label>所属卷
+        <select name="volume_id">
+          <option value="0">自动选择当前卷</option>
+          {% for volume in volumes %}
+          <option value="{{ volume.id }}">{{ volume.title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>所属单元
+        <select name="arc_id">
+          <option value="0">自动选择当前单元</option>
+          {% for arc in arcs %}
+          <option value="{{ arc.id }}">{{ arc.title }}{% if arc.recommended_chapters %} · 建议 {{ arc.recommended_chapters }} 章{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <button type="submit">生成候选施工卡</button>
+  </form>
+
+  <div class="panel">
+    <h2>规划边界</h2>
+    <p class="muted">Planner 只读取当前卷、前后卷边界、当前单元、最近已发布 transition 和必要硬事实。不会把全书所有卷一次性塞进模型。</p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>候选队列</h2>
+  {% if candidates %}
+  <div class="chapter-card-grid">
+    {% for candidate in candidates %}
+    <article class="chapter-card">
+      <div class="chapter-card-head">
+        <h2>第 {{ candidate.chapter_no }} 章</h2>
+        <span>{{ candidate.status }}</span>
+      </div>
+      <strong>{{ candidate.title }}</strong>
+      <p class="scroll-line">{{ candidate.work_order }}</p>
+      {% if candidate.validation_errors and candidate.validation_errors != "[]" %}
+      <p class="notice">{{ candidate.validation_errors }}</p>
+      {% endif %}
+      <div class="chapter-card-foot">
+        <span>{{ candidate.source }}</span>
+        <a href="/books/{{ book.id }}/write">推进到写作台</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">暂无候选施工卡。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>最近规划工作流</h2>
+  {% for run in workflow_runs %}
+  <div class="event-row">
+    <strong>{{ run.flow_name }} · {{ run.status }}</strong>
+    <span>{{ run.stage }}{% if run.error_message %}：{{ run.error_message }}{% endif %}</span>
+  </div>
+  {% else %}
+  <p class="muted">暂无记录。</p>
+  {% endfor %}
+</section>
+{% endblock %}

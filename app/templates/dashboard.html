@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">作家工作台</p>
     <h1>我的书架</h1>
-    <p class="muted">每本书都是独立对象：开书设定、作者、编辑、连续性记忆、章节批次和导出都在单书内维护。</p>
+    <p class="muted">每本书都是独立生产对象：开书设定、卷纲、作者/编辑规则、连续性账本、写作状态机和发布版本都在单书内维护。</p>
   </div>
   <a class="primary-action" href="/books/create">新建作品</a>
 </section>
@@ -23,10 +23,10 @@
     </div>
     <div class="book-meta">
       <h2>{{ item.book.title }}</h2>
-      <p>{{ item.book.premise }}</p>
+      <p>{{ item.book.premise or "尚未填写核心卖点" }}</p>
       <div class="book-stats">
         <span>约 {{ item.total_chars }} 字</span>
-        <span>{% if item.latest %}最新：第 {{ item.latest.chapter_no }} 章{% else %}尚未生成正文{% endif %}</span>
+        <span>{% if item.latest %}最新：第 {{ item.latest.chapter_no }} 章{% else %}尚未发布正文{% endif %}</span>
       </div>
     </div>
   </a>
@@ -35,7 +35,7 @@
 {% else %}
 <section class="empty-state">
   <h2>书架还是空的</h2>
-  <p>先建立第一本正式作品。系统会生成基础大纲、首个单元和初始人物设定，之后进入人工确认页。</p>
+  <p>先建立第一本正式作品。系统会先维护全书大纲和基础设定，之后进入单章线性生产。</p>
   <a class="primary-action" href="/books/create">开始开书</a>
 </section>
 {% endif %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}发布中心 - {{ book.title }}{% endblock %}
+{% block content %}
+<section class="page-head split-head">
+  <div>
+    <p class="eyebrow">Publish / Canon Gate</p>
+    <h1>发布中心</h1>
+    <p class="muted">只有人工确认并导出的正文会写回连续性账本。草稿、编辑通过稿和候选事实不会进入正史。</p>
+  </div>
+  <a class="secondary-action" href="/books/{{ book.id }}/continuity">查看连续性账本</a>
+</section>
+
+<section class="progress-panel" data-progress-panel hidden>
+  <div class="progress-bar"><span data-progress-bar></span></div>
+  <p data-progress-text>整理待导出正文...</p>
+</section>
+
+<section class="two-col">
+  <div class="panel">
+    <h2>正文门禁</h2>
+    {% for body in bodies %}
+      {% if body.status in ["editor_approved", "human_confirmed", "exported"] %}
+      <div class="event-row">
+        <strong>第 {{ body.chapter_no }} 章：{{ body.title }}</strong>
+        <span>状态：{{ body.status }}</span>
+        {% if body.status == "editor_approved" %}
+        <form method="post" action="/books/{{ book.id }}/chapters/{{ body.chapter_no }}/confirm">
+          <input type="hidden" name="body" value="">
+          <button type="submit">人工确认</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    {% else %}
+    <p class="muted">暂无可发布正文。</p>
+    {% endfor %}
+
+    <form method="post" action="/books/{{ book.id }}/exports/docx" data-progress-form data-progress-stages="收集 human_confirmed 正文|生成 DOCX|创建导出版本|发布写回 canon|刷新账本">
+      <button type="submit">导出并发布 DOCX</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>导出版本</h2>
+    {% for version in export_versions %}
+    <div class="event-row">
+      <strong>v{{ version.version }} · {{ version.status }}</strong>
+      <span>章节：{{ version.source_chapters }}</span>
+    </div>
+    {% else %}
+    <p class="muted">还没有导出版本。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="two-col">
+  <div class="panel">
+    <h2>章节快照</h2>
+    {% for snapshot in snapshots %}
+    <div class="event-row">
+      <strong>第 {{ snapshot.chapter_no }} 章 · v{{ snapshot.version }}</strong>
+      <span>{{ snapshot.ending_state }}</span>
+    </div>
+    {% else %}
+    <p class="muted">发布后才会生成不可变快照。</p>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <h2>official canon</h2>
+    {% for item in canon %}
+    <div class="event-row">
+      <strong>{{ item.canon_type }} · v{{ item.version }}</strong>
+      <span>{{ item.content }}</span>
+    </div>
+    {% else %}
+    <p class="muted">暂无正式正史记录。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -103,6 +103,20 @@ def _book_context(repo, book_id: int, request: Request, **extra: Any) -> dict[st
     }
 
 
+def _menu(book_id: int) -> list[dict[str, str]]:
+    return [
+        {"label": "工作台", "href": f"/books/{book_id}", "hint": "当前章节、候选计划、返工单和发布门禁"},
+        {"label": "规划台", "href": f"/books/{book_id}/plan", "hint": "生成候选章节施工卡，不进入正式写作"},
+        {"label": "写作台", "href": f"/books/{book_id}/write", "hint": "按 active chapter 状态机推进单章"},
+        {"label": "发布中心", "href": f"/books/{book_id}/publish", "hint": "人工确认、DOCX 导出和发布写回"},
+        {"label": "开书设定", "href": f"/books/{book_id}/setup", "hint": "全书结构化大纲、预估字数和基础设定"},
+        {"label": "卷纲", "href": f"/books/{book_id}/outline", "hint": "卷纲、单元纲和章节细纲"},
+        {"label": "作者设置", "href": f"/books/{book_id}/author", "hint": "当前书专属文风和写作规则"},
+        {"label": "编辑设置", "href": f"/books/{book_id}/editor", "hint": "当前书专属平台审稿规则"},
+        {"label": "连续性账本", "href": f"/books/{book_id}/continuity", "hint": "快照、事实、伏笔、检索审计和回滚"},
+    ]
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     repo, _ = runtime()
@@ -198,6 +212,7 @@ def book_detail(request: Request, book_id: int):
         repo,
         book_id,
         request,
+        workbench=repo.book_workbench(book_id),
         controls=repo.get_book_controls(book_id),
         volumes=repo.list_volumes(book_id),
         arcs=repo.list_arcs(book_id),
@@ -210,6 +225,113 @@ def book_detail(request: Request, book_id: int):
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)
     return templates.TemplateResponse(request, "book_detail.html", context)
+
+
+@app.get("/books/{book_id}/plan", response_class=HTMLResponse)
+def plan_workbench(request: Request, book_id: int):
+    repo, _ = runtime()
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        workbench=repo.book_workbench(book_id),
+        volumes=repo.list_volumes(book_id),
+        arcs=repo.list_arcs(book_id),
+        candidates=repo.list_chapter_candidates(book_id),
+        workflow_runs=repo.list_workflow_runs(book_id, 12),
+        workflow_events=repo.list_workflow_events(book_id, 20),
+    )
+    if context.get("missing"):
+        return render_error(request, "作品不存在。", 404)
+    return templates.TemplateResponse(request, "plan_workbench.html", context)
+
+
+@app.post("/books/{book_id}/workflow/plan-next")
+def workflow_plan_next(request: Request, book_id: int, chapter_count: str = Form("1"), arc_id: str = Form("0"), volume_id: str = Form("0")):
+    try:
+        count = int(chapter_count) if str(chapter_count).strip() else 1
+        arc = int(arc_id) if str(arc_id).strip() else 0
+        volume = int(volume_id) if str(volume_id).strip() else 0
+    except ValueError:
+        return render_error(request, "章节数、卷和单元必须是数字。")
+    if count < 1 or count > 20:
+        return render_error(request, "候选章节一次只能规划 1-20 章。")
+    _, pipe = runtime()
+    try:
+        pipe.workflow.plan_next_chapter_flow(book_id, count, volume or None, arc or None)
+    except Exception as exc:
+        return render_error(request, f"规划失败：{type(exc).__name__}: {exc}")
+    return RedirectResponse(f"/books/{book_id}/plan", status_code=303)
+
+
+@app.get("/books/{book_id}/write", response_class=HTMLResponse)
+def write_workbench(request: Request, book_id: int):
+    repo, _ = runtime()
+    bodies = repo.list_chapter_bodies(book_id)
+    next_chapter = int(bodies[-1]["chapter_no"]) + 1 if bodies else 1
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        workbench=repo.book_workbench(book_id),
+        candidates=repo.list_chapter_candidates(book_id),
+        bodies=bodies,
+        drafts=repo.list_chapter_drafts(book_id, next_chapter),
+        decisions=repo.list_editorial_decisions(book_id, next_chapter),
+        rework_tickets=repo.list_rework_tickets(book_id),
+        workflow_runs=repo.list_workflow_runs(book_id, 15),
+        workflow_events=repo.list_workflow_events(book_id, 30),
+    )
+    if context.get("missing"):
+        return render_error(request, "作品不存在。", 404)
+    return templates.TemplateResponse(request, "write_workbench.html", context)
+
+
+@app.post("/books/{book_id}/workflow/draft-next")
+def workflow_draft_next(request: Request, book_id: int, chapter_no: str = Form("")):
+    _, pipe = runtime()
+    try:
+        number = int(chapter_no) if str(chapter_no).strip() else None
+        pipe.workflow.draft_next_chapter_flow(book_id, number)
+    except Exception as exc:
+        return render_error(request, f"生成失败：{type(exc).__name__}: {exc}")
+    return RedirectResponse(f"/books/{book_id}/write", status_code=303)
+
+
+@app.post("/books/{book_id}/workflow/rework/{chapter_no}")
+def workflow_rework(book_id: int, chapter_no: int):
+    _, pipe = runtime()
+    pipe.workflow.rework_flow(book_id, chapter_no)
+    return RedirectResponse(f"/books/{book_id}/write", status_code=303)
+
+
+@app.get("/books/{book_id}/publish", response_class=HTMLResponse)
+def publish_workbench(request: Request, book_id: int):
+    repo, _ = runtime()
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        workbench=repo.book_workbench(book_id),
+        bodies=repo.list_chapter_bodies(book_id),
+        exports=repo.list_exports(book_id),
+        export_versions=repo.list_export_versions(book_id),
+        snapshots=repo.list_snapshots(book_id, 20),
+        canon=repo.list_official_canon(book_id, 20),
+    )
+    if context.get("missing"):
+        return render_error(request, "作品不存在。", 404)
+    return templates.TemplateResponse(request, "publish_workbench.html", context)
+
+
+@app.post("/books/{book_id}/workflow/publish")
+def workflow_publish(request: Request, book_id: int, export_id: str = Form("")):
+    _, pipe = runtime()
+    try:
+        pipe.workflow.publish_flow(book_id, int(export_id) if str(export_id).strip() else None)
+    except Exception as exc:
+        return render_error(request, f"发布失败：{type(exc).__name__}: {exc}")
+    return RedirectResponse(f"/books/{book_id}/publish", status_code=303)
 
 
 @app.post("/books/{book_id}/cover")

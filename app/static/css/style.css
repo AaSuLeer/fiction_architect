@@ -190,12 +190,24 @@ button:disabled {
   padding: 22px;
   box-shadow: var(--shadow);
 }
+.workbench-hero {
+  border-left: 5px solid var(--accent);
+}
 .workbench-cover {
   width: 190px;
   min-height: 254px;
   flex: 0 0 190px;
 }
 .workbench-main { flex: 1; }
+.next-action {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #b7dfd7;
+  background: #f2fbf8;
+  border-radius: 8px;
+}
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -219,7 +231,31 @@ button:disabled {
   gap: 18px;
   align-items: start;
 }
+.workbench-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
 .panel { margin-bottom: 18px; }
+.status-panel {
+  border-left: 4px solid var(--accent);
+}
+.status-card {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.status-card > span {
+  width: fit-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #eef8f6;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
 .wide-form, .narrow-form { display: grid; gap: 14px; }
 .narrow-form { max-width: 460px; }
 .form-grid {
@@ -393,7 +429,7 @@ pre {
   .topbar, .page-head, .hero-shelf, .book-workbench, .split-head {
     display: grid;
   }
-  .two-col { grid-template-columns: 1fr; }
+  .two-col, .workbench-grid { grid-template-columns: 1fr; }
   .workbench-cover { width: 100%; max-width: 220px; }
   .main { width: min(100% - 20px, 1220px); }
   h1 { font-size: 28px; }

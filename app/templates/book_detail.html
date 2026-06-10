@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ book.title }} - fiction_architect{% endblock %}
+{% block title %}{{ book.title }} - 作家工作台{% endblock %}
 {% block content %}
-<section class="book-workbench">
+{% set wb = workbench or {} %}
+<section class="book-workbench workbench-hero">
   <div class="workbench-cover">
     {% if record.cover_path %}
     <img src="{{ record.cover_path }}" alt="{{ book.title }}">
@@ -12,16 +13,21 @@
   <div class="workbench-main">
     <p class="eyebrow">单书工作台</p>
     <h1>{{ book.title }}</h1>
-    <p>{{ book.premise }}</p>
+    <p class="muted">{{ book.premise or "尚未填写核心卖点。" }}</p>
     <div class="stat-row">
-      <span>当前章节规划：{{ plans|length }} 章</span>
-      <span>已生成正文：{{ bodies|length }} 章</span>
-      <span>导出记录：{{ exports|length }} 次</span>
+      <span>已发布/保存正文：{{ (wb.bodies or bodies)|length }} 章</span>
+      <span>候选施工卡：{{ (wb.candidates or [])|length }} 张</span>
+      <span>待处理返工：{{ (wb.open_tickets or [])|length }} 条</span>
+      <span>待审批账本：{{ (wb.ledger_candidates or [])|length }} 条</span>
     </div>
-    <form class="inline-form" method="post" action="/books/{{ book.id }}/cover" enctype="multipart/form-data">
-      <input type="file" name="cover" accept="image/*">
-      <button type="submit">上传封面</button>
-    </form>
+    <div class="next-action">
+      <strong>建议下一步：{{ wb.next_action.label if wb.next_action else "规划下一章" }}</strong>
+      <div class="head-actions">
+        <a class="primary-action" href="/books/{{ book.id }}/write">进入写作台</a>
+        <a class="secondary-action" href="/books/{{ book.id }}/plan">规划候选章节</a>
+        <a class="secondary-action" href="/books/{{ book.id }}/publish">发布中心</a>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -34,36 +40,88 @@
   {% endfor %}
 </section>
 
-<section class="two-col">
+<section class="workbench-grid">
+  <div class="panel status-panel">
+    <h2>当前 active chapter</h2>
+    {% if wb.active %}
+    <div class="status-card">
+      <strong>第 {{ wb.active.chapter_no }} 章</strong>
+      <span>{{ wb.active.status }}</span>
+      <p class="muted">{{ wb.active.definition_of_done or wb.active.mission or "等待继续推进。" }}</p>
+    </div>
+    {% else %}
+    <p class="muted">当前没有正式写作中的章节。先在规划台生成候选施工卡，再从写作台推进一章。</p>
+    {% endif %}
+  </div>
+
   <div class="panel">
-    <h2>最近批次</h2>
-    {% if batches %}
-      {% for batch in batches[:5] %}
-      <a class="list-row" href="/books/{{ book.id }}/chapter-batches/{{ batch.id }}">
-        <span>第 {{ batch.start_chapter }}-{{ batch.end_chapter }} 章</span>
-        <strong>{{ batch.status }}</strong>
+    <h2>候选章节</h2>
+    {% if wb.candidates %}
+      {% for candidate in wb.candidates[:6] %}
+      <a class="list-row" href="/books/{{ book.id }}/plan">
+        <span>第 {{ candidate.chapter_no }} 章：{{ candidate.title }}</span>
+        <strong>{{ candidate.status }}</strong>
       </a>
       {% endfor %}
     {% else %}
-      <p class="muted">还没有章节批次。</p>
+      <p class="muted">暂无候选章节。</p>
     {% endif %}
   </div>
+
   <div class="panel">
-    <h2>生产记录</h2>
-    {% if events %}
-      {% for event in events[:8] %}
+    <h2>返工单</h2>
+    {% if wb.open_tickets %}
+      {% for ticket in wb.open_tickets[:6] %}
       <div class="event-row">
-        <strong>{{ event.event_type }}</strong>
-        <span>{{ event.message }}</span>
+        <strong>第 {{ ticket.chapter_no }} 章：{{ ticket.route or "待判断" }}</strong>
+        <span>{{ ticket.required_fixes }}</span>
       </div>
       {% endfor %}
     {% else %}
-      <p class="muted">暂无记录。</p>
+      <p class="muted">没有待处理返工。</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>最近正史</h2>
+    {% if wb.canon %}
+      {% for item in wb.canon[:5] %}
+      <div class="event-row">
+        <strong>{{ item.canon_type }} · v{{ item.version }}</strong>
+        <span>{{ item.content }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">发布后才会形成 official canon。</p>
     {% endif %}
   </div>
 </section>
 
-<form method="post" action="/books/{{ book.id }}/archive" class="danger-zone">
-  <button type="submit">归档这本书</button>
-</form>
+<section class="two-col">
+  <div class="panel">
+    <h2>最近工作流</h2>
+    {% if wb.workflows %}
+      {% for run in wb.workflows %}
+      <div class="event-row">
+        <strong>{{ run.flow_name }} · {{ run.status }}</strong>
+        <span>{{ run.stage }}{% if run.error_message %}：{{ run.error_message }}{% endif %}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">暂无工作流记录。</p>
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h2>封面与归档</h2>
+    <form class="wide-form" method="post" action="/books/{{ book.id }}/cover" enctype="multipart/form-data">
+      <label>上传封面
+        <input type="file" name="cover" accept="image/*">
+      </label>
+      <button type="submit">保存封面</button>
+    </form>
+    <form method="post" action="/books/{{ book.id }}/archive" class="danger-zone">
+      <button type="submit">归档这本书</button>
+    </form>
+  </div>
+</section>
 {% endblock %}

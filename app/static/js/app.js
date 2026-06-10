@@ -6,16 +6,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const text = document.querySelector("[data-progress-text]");
       if (button) {
         button.disabled = true;
-        button.textContent = "正在生成...";
+        button.textContent = button.dataset.busyText || "处理中...";
       }
       if (panel) panel.hidden = false;
       const customStages = form.dataset.progressStages;
       const stages = customStages ? customStages.split("|") : [
-        "整理本章写作任务",
-        "检索连续性资料",
-        "调用大模型写作",
-        "编辑审核与自动重写",
-        "等待人工确认正文"
+        "检查状态门禁",
+        "构建施工包",
+        "调用模型或内部服务",
+        "写入数据库状态",
+        "刷新页面"
       ];
       let index = 0;
       if (text) text.textContent = stages[index];

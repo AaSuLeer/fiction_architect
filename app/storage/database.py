@@ -93,6 +93,23 @@ SCHEMA_TABLES = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS chapter_candidates (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        volume_id INTEGER,
+        arc_id INTEGER,
+        chapter_no INTEGER NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        work_order LONGTEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+        validation_errors LONGTEXT NOT NULL DEFAULT '',
+        source VARCHAR(50) NOT NULL DEFAULT 'planner',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (book_id, chapter_no)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS chapter_plans (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         book_id INTEGER NOT NULL,
@@ -386,6 +403,33 @@ SCHEMA_TABLES = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        flow_name VARCHAR(100) NOT NULL,
+        state VARCHAR(50) NOT NULL,
+        current_step VARCHAR(100) NOT NULL DEFAULT '',
+        progress INTEGER NOT NULL DEFAULT 0,
+        error LONGTEXT NOT NULL DEFAULT '',
+        payload LONGTEXT NOT NULL DEFAULT '',
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        finished_at TIMESTAMP NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS workflow_events (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        run_id INTEGER,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        event_type VARCHAR(100) NOT NULL,
+        message TEXT NOT NULL,
+        payload LONGTEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS construction_packets (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         book_id INTEGER NOT NULL,
@@ -626,6 +670,18 @@ SCHEMA_TABLES = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS export_versions (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        export_id INTEGER NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        status VARCHAR(50) NOT NULL DEFAULT 'created',
+        body_hash VARCHAR(128) NOT NULL DEFAULT '',
+        source_chapters TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         book_id INTEGER NOT NULL,
@@ -794,6 +850,11 @@ def _ensure_schema_columns(db: Database, conn: Any) -> None:
             "recommended_count": "INTEGER NOT NULL DEFAULT 5",
             "author_count": "INTEGER NOT NULL DEFAULT 5",
         },
+        "chapter_candidates": {
+            "validation_errors": "TEXT NOT NULL DEFAULT ''",
+            "source": "VARCHAR(50) NOT NULL DEFAULT 'planner'",
+            "updated_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        },
         "chapter_bodies": {
             "export_id": "INTEGER",
         },
@@ -843,6 +904,20 @@ def _ensure_schema_columns(db: Database, conn: Any) -> None:
         "pipeline_runs": {
             "error": "TEXT NOT NULL DEFAULT ''",
         },
+        "workflow_runs": {
+            "current_step": "VARCHAR(100) NOT NULL DEFAULT ''",
+            "progress": "INTEGER NOT NULL DEFAULT 0",
+            "error": "TEXT NOT NULL DEFAULT ''",
+            "payload": "TEXT NOT NULL DEFAULT ''",
+            "finished_at": "TIMESTAMP NULL",
+        },
+        "workflow_events": {
+            "payload": "TEXT NOT NULL DEFAULT ''",
+        },
+        "export_versions": {
+            "body_hash": "VARCHAR(128) NOT NULL DEFAULT ''",
+            "source_chapters": "TEXT NOT NULL DEFAULT ''",
+        },
     }
     cur = conn.cursor()
     if db.settings.using_mysql:
@@ -868,6 +943,7 @@ def _ensure_mysql_longtext_columns(cur: Any) -> None:
         "continuity_memories": ["content"],
         "continuity_atoms": ["content"],
         "drift_reports": ["content"],
+        "chapter_candidates": ["work_order", "validation_errors"],
         "chapter_tasks": ["opening_state", "mission", "definition_of_done", "scene_route", "irreversible_change", "handoff_to_next", "forbidden_future"],
         "chapter_state_snapshots": ["opening_state", "closing_state", "unit_state", "style_signature", "snapshot_json"],
         "chapter_transitions": ["from_state", "to_state", "transition_summary"],
@@ -875,6 +951,8 @@ def _ensure_mysql_longtext_columns(cur: Any) -> None:
         "construction_packets": ["content"],
         "chapter_drafts": ["content"],
         "rework_tickets": ["required_fixes"],
+        "workflow_runs": ["error", "payload"],
+        "workflow_events": ["payload"],
         "official_canon": ["content"],
         "canonized_events": ["content"],
         "ledger_update_candidates": ["content"],
@@ -906,6 +984,7 @@ def _remove_sample_books(db: Database, conn: Any) -> None:
         "volumes",
         "story_arcs",
         "chapter_batches",
+        "chapter_candidates",
         "chapter_plans",
         "chapter_tasks",
         "chapter_state_snapshots",
@@ -913,6 +992,8 @@ def _remove_sample_books(db: Database, conn: Any) -> None:
         "editorial_decisions",
         "model_call_logs",
         "production_runs",
+        "workflow_runs",
+        "workflow_events",
         "construction_packets",
         "chapter_drafts",
         "rework_tickets",
@@ -943,6 +1024,7 @@ def _remove_sample_books(db: Database, conn: Any) -> None:
         "memory_retrieval_logs",
         "drift_reports",
         "export_records",
+        "export_versions",
         "events",
     ]
     for book_id in ids:
