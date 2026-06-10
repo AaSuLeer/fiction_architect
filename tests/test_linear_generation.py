@@ -5,9 +5,11 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.config import get_settings
 from app.factory import build_runtime
+from app.services.planning_agent import PlanningAgent
 from app.storage import Database, Repository, initialize_database
 
 
@@ -54,6 +56,138 @@ class LinearGenerationTests(unittest.TestCase):
                 self.assertTrue(row["tech_progression"])
                 self.assertTrue(row["irreversible_change"])
                 self.assertNotIn("承接单元起因，推进经过，并为结果兑现蓄力", row["objective"])
+
+    def test_planning_context_is_bounded_to_current_volume_and_neighbors(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            long_text = "长期大纲约束。" * 4000
+            book_id = repo.create_book("规划预算书", long_text, book_outline=long_text, worldbuilding=long_text, estimated_total_words=600000)
+            volumes = repo.list_volumes(book_id)
+            self.assertGreaterEqual(len(volumes), 3)
+            current_volume = volumes[1]
+            arcs = repo.list_arcs(book_id, current_volume["id"])
+            batch_id = repo.create_chapter_batch(book_id, 2, volume_id=current_volume["id"], arc_id=arcs[0]["id"])
+            plans = repo.list_chapter_plan_rows(book_id, batch_id)
+            ctx = repo.get_architecture_context(book_id, int(plans[0]["chapter_no"]))
+            previous_volume, next_volume = pipe.planner._neighbor_volumes(book_id, ctx["volume"])
+            compact = pipe.planner._compact_context(
+                {
+                    "book": ctx["book"],
+                    "volume": ctx["volume"],
+                    "previous_volume": previous_volume,
+                    "next_volume": next_volume,
+                    "unit": ctx["arc"],
+                    "characters": ctx["characters"],
+                    "canon": [{"content": "硬事实。" * 2000, "fact_type": "rule"} for _ in range(30)],
+                    "batch": repo.get_chapter_batch(batch_id),
+                    "chapters": [{"chapter_no": row["chapter_no"], "title": row["title"]} for row in plans],
+                    "previous": {"body_excerpt": "上一章正文。" * 3000, "terminal_state": "上一章结尾。" * 1000},
+                }
+            )
+            payload = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+            self.assertLessEqual(len(payload), 18000)
+            self.assertEqual(current_volume["id"], compact["volume"]["id"])
+            self.assertEqual(volumes[0]["id"], compact["volume_boundaries"]["previous"]["id"])
+            self.assertEqual(volumes[2]["id"], compact["volume_boundaries"]["next"]["id"])
+
+    def test_non_manual_titles_are_not_sent_as_planning_hints(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_book("旧标题不进提示", "主角线性推进")
+            batch_id = repo.create_chapter_batch(book_id, 1)
+            with repo.db.session() as conn:
+                repo._execute(conn, "UPDATE chapter_plans SET title = ?, manual_edited = 0 WHERE book_id = ? AND chapter_no = ?", ("开局压迫", book_id, 1))
+            plans = repo.list_chapter_plan_rows(book_id, batch_id)
+            chapters = [{"chapter_no": row["chapter_no"], "title": row["title"] if int(row.get("manual_edited") or 0) == 1 else ""} for row in plans]
+            self.assertEqual("", chapters[0]["title"])
+
+    def test_planning_ignores_markdown_headings_as_character_names(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            context = {
+                "book": {"title": "人物清洗测试"},
+                "volume": {"goal": "当前卷目标"},
+                "unit": {"goal": "当前单元目标", "process": "按单元推进"},
+                "characters": [{"name": "# 主要人物小传"}, {"name": "顾临川"}],
+                "canon": [],
+                "batch": {"id": 1},
+                "chapters": [{"chapter_no": 1, "title": ""}],
+                "previous": {},
+            }
+            planned = pipe.planner._mock_plan(context)
+            self.assertNotIn("# 主要人物小传", planned[0]["core_event"])
+            self.assertIn("顾临川", planned[0]["core_event"])
+
+    def test_planning_normalizer_accepts_loose_numeric_fields(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            item = pipe.planner._normalize_plan(
+                {
+                    "chapter_no": ["12"],
+                    "title": "第12章",
+                    "core_event": "主角处理当前单元的具体事件。",
+                    "target_chars": ["2600字"],
+                }
+            )
+            self.assertEqual(12, item["chapter_no"])
+            self.assertEqual(2600, item["target_chars"])
+
+    def test_planning_agent_fills_missing_model_chapters(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            context = {
+                "book": {"title": "补齐测试"},
+                "volume": {"goal": "当前卷目标"},
+                "unit": {"goal": "当前单元目标", "process": "按单元推进"},
+                "characters": [],
+                "canon": [],
+                "batch": {"id": 1},
+                "chapters": [{"chapter_no": 1, "title": "一"}, {"chapter_no": 2, "title": "二"}, {"chapter_no": 3, "title": "三"}],
+                "previous": {},
+            }
+            planned = pipe.planner._ensure_all_chapters_planned(context, [{"chapter_no": 1, "title": "一", "core_event": "已规划"}])
+            self.assertEqual([1, 2, 3], [row["chapter_no"] for row in planned])
+            self.assertTrue(planned[1]["core_event"])
+
+    def test_planning_agent_falls_back_when_model_fails(self):
+        class FailingLlm:
+            settings = SimpleNamespace(llm_mode="compatible", llm_default_model="qwen-plus", llm_outline_model="qwen-max")
+
+            def complete(self, *args, **kwargs):
+                raise RuntimeError("timeout")
+
+        with IsolatedEnv():
+            repo = self.repo()
+            book_id = repo.create_book("模型失败兜底书", "主角线性推进")
+            batch_id = repo.create_chapter_batch(book_id, 3)
+            agent = PlanningAgent(repo, FailingLlm())
+            planned = agent.plan_chapter_batch(book_id, batch_id)
+            rows = repo.list_chapter_plan_rows(book_id, batch_id)
+            self.assertEqual(3, len(planned))
+            self.assertEqual(3, len([row for row in rows if row["core_event"]]))
+            self.assertEqual("planning", repo.get_chapter_batch(batch_id)["status"])
+
+    def test_generated_template_title_is_not_preserved_on_replan(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_book("旧标题清理书", "主角线性推进")
+            batch_id = repo.create_chapter_batch(book_id, 1)
+            with repo.db.session() as conn:
+                repo._execute(conn, "UPDATE chapter_plans SET title = ?, manual_edited = 0 WHERE book_id = ? AND chapter_no = ?", ("开局压迫", book_id, 1))
+            repo.apply_planned_chapter_cards(
+                book_id,
+                batch_id,
+                [
+                    {
+                        "chapter_no": 1,
+                        "title": "第1章 新规划标题",
+                        "objective": "新目标",
+                        "core_event": "新事件",
+                    }
+                ],
+            )
+            plan = repo.get_chapter_plan_row(book_id, 1)
+            self.assertEqual("第1章 新规划标题", plan["title"])
 
     def test_reused_legacy_card_gets_structure_without_overwriting_manual_text(self):
         with IsolatedEnv():

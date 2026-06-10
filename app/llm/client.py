@@ -27,6 +27,7 @@ class LlmClient:
             "model": selected_model,
             "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             "temperature": 0.82,
+            "max_tokens": self._max_tokens_for_role(role),
         }
         request = urllib.request.Request(
             request_url,
@@ -35,7 +36,8 @@ class LlmClient:
             method="POST",
         )
         last_error: BaseException | None = None
-        for attempt in range(1, 4):
+        attempts = 1 if role == "outline" else 3
+        for attempt in range(1, attempts + 1):
             try:
                 with urllib.request.urlopen(request, timeout=self.settings.llm_timeout) as response:
                     body = json.loads(response.read().decode("utf-8"))
@@ -49,7 +51,7 @@ class LlmClient:
             except urllib.error.HTTPError as exc:
                 last_error = exc
                 detail = self._http_error_detail(exc)
-                if attempt >= 3:
+                if attempt >= attempts:
                     raise RuntimeError(
                         f"LLM request failed after {attempt} attempts: HTTP {exc.code} at {request_url}; "
                         f"model={selected_model}; role={role}; response={detail}"
@@ -57,7 +59,7 @@ class LlmClient:
                 time.sleep(1.5 * attempt)
             except (TimeoutError, OSError, urllib.error.URLError) as exc:
                 last_error = exc
-                if attempt >= 3:
+                if attempt >= attempts:
                     raise RuntimeError(
                         f"LLM request failed after {attempt} attempts: {exc}; url={request_url}; "
                         f"model={selected_model}; role={role}"
@@ -65,7 +67,7 @@ class LlmClient:
                 time.sleep(1.5 * attempt)
             except RuntimeError as exc:
                 last_error = exc
-                if attempt >= 3:
+                if attempt >= attempts:
                     raise
                 time.sleep(1.5 * attempt)
         raise RuntimeError(f"LLM request failed: {last_error}")
@@ -78,6 +80,13 @@ class LlmClient:
         if role == "editor":
             return self.settings.llm_editor_model
         return self.settings.llm_default_model
+
+    def _max_tokens_for_role(self, role: str) -> int:
+        if role == "writer":
+            return 8192
+        if role in {"outline", "editor"}:
+            return 4096
+        return 2048
 
     def _chat_completions_url(self, base_url: str) -> str:
         url = base_url.strip().rstrip("/")

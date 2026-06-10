@@ -81,6 +81,52 @@ class ArchitectureTests(unittest.TestCase):
             self.assertIsNotNone(repo.latest_memory(book_id, "chapter_memory", "chapter:1"))
             self.assertEqual(1, len(repo.list_atoms(book_id, status="candidate", chapter_no=1)))
 
+    def test_phase2_pipeline_uses_drafts_and_decisions_not_artifact_truth(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_book("phase2-mainline", "mainline", target_chars_min=900, target_chars_max=1800)
+            repo.create_chapter_batch(book_id, 1)
+            result = pipe.generate_chapter(book_id, 1)
+            self.assertEqual("approved", result["status"])
+            self.assertIsNotNone(repo.latest_chapter_draft(book_id, 1))
+            self.assertGreaterEqual(len(repo.list_editorial_decisions(book_id, 1)), 1)
+            self.assertIsNone(repo.latest_artifact(book_id, 1, "draft"))
+            self.assertIsNone(repo.latest_artifact(book_id, 1, "review"))
+
+    def test_phase2_packet_uses_only_published_context_and_approved_atoms(self):
+        with IsolatedEnv():
+            repo, pipe = build_runtime()
+            book_id = repo.create_book("phase2-packet", "mainline", target_chars_min=50, target_chars_max=5000)
+            batch_id = repo.create_chapter_batch(book_id, 2)
+            pipe.plan_batch(book_id, batch_id)
+            repo.save_chapter_body(book_id, 1, "chapter 1", "human confirmed but not exported secret", "human_confirmed")
+            repo.create_atom(book_id, 1, "fact", "candidate secret", status="candidate", visible_after_chapter=1)
+            repo.create_atom(book_id, 1, "fact", "approved fact", status="approved", visible_after_chapter=1)
+            packet = pipe.continuity.build_construction_packet(book_id, 2)
+            self.assertNotIn("human confirmed but not exported secret", packet["content"])
+            self.assertNotIn("candidate secret", packet["content"])
+            self.assertIn("approved fact", packet["content"])
+            record = repo.create_export_record(book_id, "docx", "dummy.docx")
+            repo.mark_exported(book_id, int(record["id"]))
+            packet = pipe.continuity.build_construction_packet(book_id, 2)
+            self.assertIn("human confirmed but not exported secret", packet["content"])
+
+    def test_phase2_republish_versions_snapshots_append_only(self):
+        with IsolatedEnv():
+            repo, _ = build_runtime()
+            book_id = repo.create_book("phase2-versioning", "mainline", target_chars_min=50, target_chars_max=5000)
+            repo.create_chapter_batch(book_id, 1)
+            repo.save_chapter_body(book_id, 1, "chapter 1", "first published text", "human_confirmed")
+            first = repo.create_export_record(book_id, "docx", "first.docx")
+            repo.mark_exported(book_id, int(first["id"]))
+            repo.save_chapter_body(book_id, 1, "chapter 1", "second published text", "human_confirmed")
+            second = repo.create_export_record(book_id, "docx", "second.docx")
+            repo.mark_exported(book_id, int(second["id"]))
+            snapshots = [row for row in repo.list_snapshots(book_id) if int(row["chapter_no"]) == 1]
+            self.assertEqual([1, 2], sorted(int(row["version"]) for row in snapshots))
+            latest = max(snapshots, key=lambda row: int(row["version"]))
+            self.assertIsNotNone(latest.get("supersedes_snapshot_id"))
+
     def test_contaminated_body_is_rejected(self):
         result = TextGuard().check_body("交付说明：根据规则，本章由连续性工作室处理，审稿通过后比上一章更稳。")
         self.assertFalse(result.passed)

@@ -128,9 +128,9 @@ def create_book(
     market_channel: str = Form("番茄/男频"),
     target_reader: str = Form(""),
     pov_policy: str = Form("third_limited"),
-    target_chars_min: int = Form(2200),
-    target_chars_max: int = Form(3200),
-    estimated_total_words: int = Form(1000000),
+    target_chars_min: str = Form("2200"),
+    target_chars_max: str = Form("3200"),
+    estimated_total_words: str = Form("1000000"),
     story_mainline: str = Form(""),
     worldbuilding: str = Form(""),
     book_outline: str = Form(""),
@@ -244,9 +244,9 @@ def update_setup(
     market_channel: str = Form(""),
     target_reader: str = Form(""),
     pov_policy: str = Form("third_limited"),
-    target_chars_min: int = Form(2200),
-    target_chars_max: int = Form(3200),
-    estimated_total_words: int = Form(1000000),
+    target_chars_min: str = Form("2200"),
+    target_chars_max: str = Form("3200"),
+    estimated_total_words: str = Form("1000000"),
     story_mainline: str = Form(""),
     worldbuilding: str = Form(""),
     book_outline: str = Form(""),
@@ -310,25 +310,30 @@ def outline_page(request: Request, book_id: int):
 
 @app.post("/books/{book_id}/volumes/{volume_id}")
 def update_volume(
+    request: Request,
     book_id: int,
     volume_id: int,
     title: str = Form(...),
     goal: str = Form(""),
-    estimated_words: int = Form(200000),
+    estimated_words: str = Form("200000"),
     core_conflict: str = Form(""),
     stage_payoff: str = Form(""),
     character_progression: str = Form(""),
     foreshadowing_plan: str = Form(""),
-    start_chapter: int = Form(1),
-    end_chapter: int = Form(1),
+    start_chapter: str = Form("1"),
+    end_chapter: str = Form("1"),
 ):
     repo, _ = runtime()
-    repo.update_volume(book_id, volume_id, locals())
+    try:
+        repo.update_volume(book_id, volume_id, locals())
+    except ValueError as exc:
+        return render_error(request, str(exc))
     return RedirectResponse(f"/books/{book_id}/outline", status_code=303)
 
 
 @app.post("/books/{book_id}/arcs/{arc_id}")
 def update_arc(
+    request: Request,
     book_id: int,
     arc_id: int,
     title: str = Form(...),
@@ -340,13 +345,16 @@ def update_arc(
     payoff: str = Form(""),
     character_change: str = Form(""),
     foreshadowing_progress: str = Form(""),
-    recommended_chapters: int = Form(5),
-    start_chapter: int = Form(1),
-    end_chapter: int = Form(1),
+    recommended_chapters: str = Form("5"),
+    start_chapter: str = Form("1"),
+    end_chapter: str = Form("1"),
     status: str = Form("planned"),
 ):
     repo, _ = runtime()
-    repo.update_arc(book_id, arc_id, locals())
+    try:
+        repo.update_arc(book_id, arc_id, locals())
+    except ValueError as exc:
+        return render_error(request, str(exc))
     return RedirectResponse(f"/books/{book_id}/outline", status_code=303)
 
 
@@ -418,7 +426,13 @@ def new_batch_page(request: Request, book_id: int):
 
 
 @app.post("/books/{book_id}/chapter-batches/new")
-def create_batch(request: Request, book_id: int, chapter_count: int = Form(0), arc_id: int = Form(0), volume_id: int = Form(0)):
+def create_batch(request: Request, book_id: int, chapter_count: str = Form("0"), arc_id: str = Form("0"), volume_id: str = Form("0")):
+    try:
+        chapter_count = int(chapter_count) if str(chapter_count).strip() else 0
+        arc_id = int(arc_id) if str(arc_id).strip() else 0
+        volume_id = int(volume_id) if str(volume_id).strip() else 0
+    except ValueError:
+        return render_error(request, "chapter_count, arc_id and volume_id must be numbers.")
     if chapter_count and (chapter_count < 1 or chapter_count > 20):
         return render_error(request, "一次最多只能新建 20 章，最少 1 章。")
     repo, pipe = runtime()
@@ -482,14 +496,29 @@ def chapter_detail(request: Request, book_id: int, chapter_no: int):
     if plan is None:
         return render_error(request, "章节卡片不存在。", 404)
     back_href = f"/books/{book_id}/chapter-batches/{plan['batch_id']}" if plan.get("batch_id") else f"/books/{book_id}/chapters"
-    context = _book_context(repo, book_id, request, back_href=back_href, plan=plan, body=repo.get_chapter_body(book_id, chapter_no), artifacts=repo.list_artifacts(book_id, chapter_no), task=repo.get_rewrite_task(book_id, chapter_no))
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        back_href=back_href,
+        plan=plan,
+        body=repo.get_chapter_body(book_id, chapter_no),
+        drafts=repo.list_chapter_drafts(book_id, chapter_no),
+        decisions=repo.list_editorial_decisions(book_id, chapter_no),
+        rework_tickets=repo.list_rework_tickets(book_id, chapter_no),
+        artifacts=repo.list_artifacts(book_id, chapter_no),
+        task=repo.get_rework_ticket(book_id, chapter_no),
+    )
     return templates.TemplateResponse(request, "chapter_detail.html", context)
 
 
 @app.post("/books/{book_id}/chapters/{chapter_no}/plan")
-def update_chapter_plan(book_id: int, chapter_no: int, title: str = Form(...), objective: str = Form(...), allowed_reveals: str = Form(""), forbidden_reveals: str = Form(""), pace_limit: str = Form(""), plot_summary: str = Form(""), target_chars: int = Form(2600), unique_task: str = Form(""), core_event: str = Form(""), tech_progression: str = Form(""), character_roles: str = Form(""), antagonist_move: str = Form(""), external_pressure: str = Form(""), irreversible_change: str = Form(""), ending_hook: str = Form(""), no_repeat_guard: str = Form("")):
+def update_chapter_plan(request: Request, book_id: int, chapter_no: int, title: str = Form(...), objective: str = Form(...), allowed_reveals: str = Form(""), forbidden_reveals: str = Form(""), pace_limit: str = Form(""), plot_summary: str = Form(""), target_chars: str = Form("2600"), unique_task: str = Form(""), core_event: str = Form(""), tech_progression: str = Form(""), character_roles: str = Form(""), antagonist_move: str = Form(""), external_pressure: str = Form(""), irreversible_change: str = Form(""), ending_hook: str = Form(""), no_repeat_guard: str = Form("")):
     repo, _ = runtime()
-    repo.update_chapter_plan(book_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars, unique_task, core_event, tech_progression, character_roles, antagonist_move, external_pressure, irreversible_change, ending_hook, no_repeat_guard)
+    try:
+        repo.update_chapter_plan(book_id, chapter_no, title, objective, allowed_reveals, forbidden_reveals, pace_limit, plot_summary, target_chars, unique_task, core_event, tech_progression, character_roles, antagonist_move, external_pressure, irreversible_change, ending_hook, no_repeat_guard)
+    except ValueError as exc:
+        return render_error(request, str(exc))
     plan = repo.get_chapter_plan_row(book_id, chapter_no) or {}
     batch_id = plan.get("batch_id")
     target = f"/books/{book_id}/chapter-batches/{batch_id}" if batch_id else f"/books/{book_id}/outline"
@@ -534,10 +563,33 @@ def confirm_chapter(request: Request, book_id: int, chapter_no: int, body: str =
 @app.get("/books/{book_id}/continuity", response_class=HTMLResponse)
 def continuity_page(request: Request, book_id: int):
     repo, _ = runtime()
-    context = _book_context(repo, book_id, request, memories=repo.list_memories(book_id), atoms=repo.list_atoms(book_id), logs=repo.list_retrieval_logs(book_id))
+    context = _book_context(
+        repo,
+        book_id,
+        request,
+        memories=repo.list_memories(book_id),
+        atoms=repo.list_atoms(book_id),
+        logs=repo.list_retrieval_logs(book_id),
+        snapshots=repo.list_snapshots(book_id),
+        ledger_candidates=repo.list_ledger_candidates(book_id, limit=100),
+        official_canon=repo.list_official_canon(book_id, 100),
+        character_states=repo.list_ledger_entries(book_id, "character_states", 50),
+        relationship_states=repo.list_ledger_entries(book_id, "relationship_states", 50),
+        foreshadowing_ledger=repo.list_ledger_entries(book_id, "foreshadowing_ledger", 50),
+    )
     if context.get("missing"):
         return render_error(request, "作品不存在。", 404)
     return templates.TemplateResponse(request, "continuity.html", context)
+
+
+@app.post("/books/{book_id}/continuity/snapshots/{snapshot_id}/rollback")
+def rollback_snapshot(request: Request, book_id: int, snapshot_id: int, note: str = Form("")):
+    repo, _ = runtime()
+    try:
+        repo.rollback_snapshot(book_id, snapshot_id, note)
+    except ValueError as exc:
+        return render_error(request, str(exc), 404)
+    return RedirectResponse(f"/books/{book_id}/continuity", status_code=303)
 
 
 @app.get("/books/{book_id}/continuity/memories/{memory_id}/edit", response_class=HTMLResponse)

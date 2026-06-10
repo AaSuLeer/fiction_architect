@@ -25,10 +25,74 @@ class PromptCompressor:
         return ranked_memories, ranked_atoms, reason
 
 
-class ContinuityStudio:
+class ContinuityLedgerService:
     def __init__(self, repo: Repository):
         self.repo = repo
         self.compressor = PromptCompressor()
+
+    def build_construction_packet(self, book_id: int, chapter_no: int, run_id: int | None = None) -> dict:
+        ctx = self.repo.get_architecture_context(book_id, chapter_no)
+        book = ctx["book"]
+        plan = ctx["plan"]
+        volume = ctx["volume"] or {}
+        unit = ctx["arc"] or {}
+        task = self.repo.ensure_chapter_task(book_id, chapter_no)
+        recent_transitions = self.repo.list_recent_transitions(book_id, chapter_no, 3)
+        recent_snapshots = [
+            row for row in self.repo.list_snapshots(book_id, 20)
+            if int(row.get("chapter_no") or 0) < int(chapter_no)
+        ][:3]
+        previous_context = self._previous_chapter_context(book_id, chapter_no, formal_only=True)
+        atoms = [
+            atom for atom in self.repo.list_atoms(book_id)
+            if str(atom.get("status") or "") in {"approved", "published"}
+            and int(atom.get("visible_after_chapter") or 0) <= chapter_no
+        ][:24]
+        ledger_candidates = [
+            item for item in self.repo.list_ledger_candidates(book_id, status="approved", limit=50)
+        ][:24]
+        query = " ".join(
+            [
+                str(task.get("mission") or ""),
+                str(plan.get("plot_summary") or ""),
+                str(unit.get("goal") or ""),
+                str(volume.get("goal") or ""),
+            ]
+        )
+        log = self.repo.create_retrieval_log(
+            book_id,
+            chapter_no,
+            query,
+            [int(row["id"]) for row in recent_snapshots],
+            [int(a["id"]) for a in atoms],
+            "construction_packet_v2: published snapshots/transitions, approved/published atoms, current task, current unit state, style pack.",
+            run_id,
+        )
+        packet = {
+            "chapter_task": json_safe(task),
+            "recent_transitions": json_safe(recent_transitions),
+            "recent_snapshots": json_safe(recent_snapshots),
+            "active_unit_state": {
+                "book_outline": book.get("book_outline") or book.get("imported_outline") or book.get("story_mainline") or "",
+                "volume": volume,
+                "unit": unit,
+                "chapter_plan": plan,
+            },
+            "on_stage_cast": ctx["characters"],
+            "hard_constraints": {
+                "pov_policy": book.get("pov_policy") or "third_limited",
+                "official_canon": self.repo.list_official_canon(book_id, 40),
+                "ledger_updates": ledger_candidates,
+                "approved_atoms": [self._atom_prompt_view(item) for item in atoms],
+                "visibility_rule": "Only approved/published facts visible for this chapter may be used.",
+            },
+            "style_pack": ctx.get("author_profile") or {},
+            "optional_prev_excerpt": previous_context["body_excerpt"],
+            "previous_terminal_state": previous_context["terminal_state"],
+            "retrieval_log_id": log["id"],
+            "retrieval_reason": "construction_packet_v2 only reads published/canonized prior text, approved/published atoms, current task, current outline state, and style pack.",
+        }
+        return self.repo.create_construction_packet(book_id, chapter_no, run_id, packet)
 
     def build_ref_pack(self, book_id: int, chapter_no: int, run_id: int | None = None):
         ctx = self.repo.get_architecture_context(book_id, chapter_no)
@@ -83,17 +147,17 @@ class ContinuityStudio:
         }
         return self.repo.create_artifact(book_id, chapter_no, "ref_pack", "ready", json.dumps(json_safe(ref_pack), ensure_ascii=False, indent=2))
 
-    def _previous_chapter_context(self, book_id: int, chapter_no: int) -> dict:
+    def _previous_chapter_context(self, book_id: int, chapter_no: int, formal_only: bool = False) -> dict:
         if chapter_no <= 1:
             return {"body_excerpt": "", "terminal_state": "首章无上一章正文。", "temporary_linear_context": ""}
         previous = self.repo.get_chapter_body(book_id, chapter_no - 1)
         if not previous:
-            draft = self.repo.latest_artifact(book_id, chapter_no - 1, "draft")
+            draft = None if formal_only else self.repo.latest_artifact(book_id, chapter_no - 1, "draft")
             body = draft.content if draft and draft.status in {"editor_approved", "drafted"} else ""
             status = draft.status if draft else "missing"
         else:
-            body = previous.get("body") or ""
             status = previous.get("status") or ""
+            body = previous.get("body") or "" if (not formal_only or status in {"exported", "published", "canonized"}) else ""
         excerpt = self._body_excerpt(body, 5600)
         tail = self._compact_text(body, 900)
         return {
@@ -159,7 +223,21 @@ class ContinuityStudio:
 
     def writeback_from_export(self, book_id: int, export_id: int):
         bodies = [row for row in self.repo.list_chapter_bodies(book_id, status="exported") if int(row.get("export_id") or 0) == int(export_id)]
-        return [self.compress_exported_chapter(book_id, int(row["chapter_no"]), row["body"], export_id) for row in bodies]
+        self.repo.backfill_phase2_ledgers(book_id)
+        for row in bodies:
+            chapter_no = int(row["chapter_no"])
+            if not self.repo.latest_memory(book_id, "chapter_memory", f"chapter:{chapter_no}"):
+                compact = self._compact_text(str(row.get("body") or ""), 1200)
+                self.repo.create_memory(
+                    book_id,
+                    "chapter_memory",
+                    f"chapter:{chapter_no}",
+                    {"archival": True, "source": f"export:{export_id}", "summary": compact},
+                    chapter_no,
+                    chapter_no,
+                    export_id,
+                )
+        return self.repo.list_ledger_candidates(book_id, limit=50)
 
     def compress_exported_chapter(self, book_id: int, chapter_no: int, body: str, export_id: int):
         plan = self.repo.get_chapter_plan_row(book_id, chapter_no) or {}
@@ -190,6 +268,7 @@ class ContinuityStudio:
             self.compress_unit(book_id, chapter_no - 2, chapter_no, export_id)
         if chapter_no % 50 == 0:
             self.compress_volume(book_id, chapter_no - 49, chapter_no, export_id)
+        self.repo.set_chapter_task_status(book_id, chapter_no, "canonized")
         return self.repo.create_artifact(book_id, chapter_no, "continuity_patch", "candidate", json.dumps(json_safe({"raw_memory_id": raw["id"], "chapter_memory_id": memory["id"], "atom_id": atom["id"], "source_export_id": export_id}), ensure_ascii=False, indent=2))
 
     def compress_unit(self, book_id: int, start: int, end: int, export_id: int | None = None):
@@ -227,3 +306,6 @@ class ContinuityStudio:
 
     def _compact_text(self, text: str, limit: int) -> str:
         return " ".join(text.split())[:limit]
+
+
+ContinuityStudio = ContinuityLedgerService

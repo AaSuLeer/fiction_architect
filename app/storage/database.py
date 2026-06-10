@@ -117,6 +117,7 @@ SCHEMA_TABLES = [
         irreversible_change TEXT NOT NULL DEFAULT '',
         ending_hook TEXT NOT NULL DEFAULT '',
         no_repeat_guard TEXT NOT NULL DEFAULT '',
+        manual_edited INTEGER NOT NULL DEFAULT 0,
         status VARCHAR(50) NOT NULL DEFAULT 'planned',
         UNIQUE (book_id, chapter_no)
     )
@@ -290,6 +291,255 @@ SCHEMA_TABLES = [
         book_id INTEGER NOT NULL,
         chapter_no INTEGER NOT NULL,
         status VARCHAR(50) NOT NULL,
+        error TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chapter_tasks (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'task_ready',
+        opening_state LONGTEXT NOT NULL,
+        mission LONGTEXT NOT NULL,
+        definition_of_done LONGTEXT NOT NULL,
+        scene_route LONGTEXT NOT NULL,
+        irreversible_change LONGTEXT NOT NULL,
+        handoff_to_next LONGTEXT NOT NULL,
+        forbidden_future LONGTEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1,
+        source_plan_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chapter_state_snapshots (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        opening_state LONGTEXT NOT NULL,
+        closing_state LONGTEXT NOT NULL,
+        unit_state LONGTEXT NOT NULL,
+        style_signature LONGTEXT NOT NULL,
+        source_export_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chapter_transitions (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        from_state LONGTEXT NOT NULL,
+        to_state LONGTEXT NOT NULL,
+        transition_summary LONGTEXT NOT NULL,
+        source_export_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS editorial_decisions (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        run_id INTEGER,
+        review_artifact_id INTEGER,
+        draft_id INTEGER,
+        decision VARCHAR(50) NOT NULL,
+        score INTEGER NOT NULL DEFAULT 0,
+        failure_code VARCHAR(100) NOT NULL DEFAULT '',
+        route VARCHAR(50) NOT NULL DEFAULT '',
+        evidence LONGTEXT NOT NULL,
+        required_fixes LONGTEXT NOT NULL,
+        retryable INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_call_logs (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER,
+        chapter_no INTEGER,
+        run_id INTEGER,
+        role VARCHAR(50) NOT NULL,
+        model VARCHAR(255) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        elapsed_ms INTEGER NOT NULL DEFAULT 0,
+        error TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS production_runs (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        run_type VARCHAR(50) NOT NULL DEFAULT 'chapter',
+        status VARCHAR(50) NOT NULL,
+        failure_code VARCHAR(100) NOT NULL DEFAULT '',
+        error TEXT NOT NULL DEFAULT '',
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        finished_at TIMESTAMP NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS construction_packets (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        run_id INTEGER,
+        content LONGTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chapter_drafts (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        run_id INTEGER,
+        source_packet_id INTEGER,
+        rewrite_of_draft_id INTEGER,
+        status VARCHAR(50) NOT NULL DEFAULT 'drafted',
+        content LONGTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rework_tickets (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        run_id INTEGER,
+        editorial_decision_id INTEGER NOT NULL,
+        route VARCHAR(50) NOT NULL DEFAULT 'writer',
+        failure_code VARCHAR(100) NOT NULL DEFAULT '',
+        required_fixes LONGTEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'open',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 2,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS human_approval_logs (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER NOT NULL,
+        decision VARCHAR(50) NOT NULL,
+        body_hash VARCHAR(128) NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS official_canon (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        canon_type VARCHAR(100) NOT NULL,
+        content LONGTEXT NOT NULL,
+        source_export_id INTEGER,
+        source_event_id INTEGER,
+        source_snapshot_id INTEGER,
+        supersedes_canon_id INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        status VARCHAR(50) NOT NULL DEFAULT 'published',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS canonized_events (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        event_type VARCHAR(100) NOT NULL,
+        source_export_id INTEGER,
+        content LONGTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ledger_update_candidates (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        chapter_no INTEGER,
+        ledger_type VARCHAR(100) NOT NULL,
+        subject_key VARCHAR(255) NOT NULL DEFAULT '',
+        content LONGTEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'candidate',
+        source_export_id INTEGER,
+        source_snapshot_id INTEGER,
+        supersedes_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS character_states (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        character_key VARCHAR(255) NOT NULL,
+        chapter_no INTEGER,
+        state LONGTEXT NOT NULL,
+        source_snapshot_id INTEGER,
+        supersedes_id INTEGER,
+        status VARCHAR(50) NOT NULL DEFAULT 'published',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS relationship_states (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        subject_key VARCHAR(255) NOT NULL,
+        chapter_no INTEGER,
+        state LONGTEXT NOT NULL,
+        source_snapshot_id INTEGER,
+        supersedes_id INTEGER,
+        status VARCHAR(50) NOT NULL DEFAULT 'published',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS foreshadowing_ledger (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        thread_key VARCHAR(255) NOT NULL,
+        chapter_no INTEGER,
+        ledger_status VARCHAR(50) NOT NULL DEFAULT 'open',
+        content LONGTEXT NOT NULL,
+        source_snapshot_id INTEGER,
+        supersedes_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS setting_ledger (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        subject_key VARCHAR(255) NOT NULL,
+        chapter_no INTEGER,
+        content LONGTEXT NOT NULL,
+        source_snapshot_id INTEGER,
+        supersedes_id INTEGER,
+        status VARCHAR(50) NOT NULL DEFAULT 'published',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS progression_ledger (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        book_id INTEGER NOT NULL,
+        subject_key VARCHAR(255) NOT NULL,
+        chapter_no INTEGER,
+        content LONGTEXT NOT NULL,
+        source_snapshot_id INTEGER,
+        supersedes_id INTEGER,
+        status VARCHAR(50) NOT NULL DEFAULT 'published',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -517,6 +767,7 @@ def _ensure_schema_columns(db: Database, conn: Any) -> None:
             "irreversible_change": "TEXT NOT NULL DEFAULT ''",
             "ending_hook": "TEXT NOT NULL DEFAULT ''",
             "no_repeat_guard": "TEXT NOT NULL DEFAULT ''",
+            "manual_edited": "INTEGER NOT NULL DEFAULT 0",
         },
         "volumes": {
             "estimated_words": "INTEGER NOT NULL DEFAULT 200000",
@@ -567,6 +818,30 @@ def _ensure_schema_columns(db: Database, conn: Any) -> None:
             "characters": "TEXT NOT NULL DEFAULT ''",
             "foreshadowing_tags": "TEXT NOT NULL DEFAULT ''",
             "confidence": "REAL NOT NULL DEFAULT 0.6",
+            "subject_key": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "supersedes_atom_id": "INTEGER",
+            "relevance_tags": "TEXT NOT NULL DEFAULT ''",
+        },
+        "chapter_state_snapshots": {
+            "supersedes_snapshot_id": "INTEGER",
+            "version": "INTEGER NOT NULL DEFAULT 1",
+            "snapshot_json": "TEXT NOT NULL DEFAULT ''",
+        },
+        "chapter_transitions": {
+            "supersedes_transition_id": "INTEGER",
+            "version": "INTEGER NOT NULL DEFAULT 1",
+        },
+        "editorial_decisions": {
+            "draft_id": "INTEGER",
+            "score": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "official_canon": {
+            "source_snapshot_id": "INTEGER",
+            "supersedes_canon_id": "INTEGER",
+            "version": "INTEGER NOT NULL DEFAULT 1",
+        },
+        "pipeline_runs": {
+            "error": "TEXT NOT NULL DEFAULT ''",
         },
     }
     cur = conn.cursor()
@@ -593,6 +868,21 @@ def _ensure_mysql_longtext_columns(cur: Any) -> None:
         "continuity_memories": ["content"],
         "continuity_atoms": ["content"],
         "drift_reports": ["content"],
+        "chapter_tasks": ["opening_state", "mission", "definition_of_done", "scene_route", "irreversible_change", "handoff_to_next", "forbidden_future"],
+        "chapter_state_snapshots": ["opening_state", "closing_state", "unit_state", "style_signature", "snapshot_json"],
+        "chapter_transitions": ["from_state", "to_state", "transition_summary"],
+        "editorial_decisions": ["evidence", "required_fixes"],
+        "construction_packets": ["content"],
+        "chapter_drafts": ["content"],
+        "rework_tickets": ["required_fixes"],
+        "official_canon": ["content"],
+        "canonized_events": ["content"],
+        "ledger_update_candidates": ["content"],
+        "character_states": ["state"],
+        "relationship_states": ["state"],
+        "foreshadowing_ledger": ["content"],
+        "setting_ledger": ["content"],
+        "progression_ledger": ["content"],
     }
     for table, columns in longtext_columns.items():
         for column in columns:
@@ -617,6 +907,24 @@ def _remove_sample_books(db: Database, conn: Any) -> None:
         "story_arcs",
         "chapter_batches",
         "chapter_plans",
+        "chapter_tasks",
+        "chapter_state_snapshots",
+        "chapter_transitions",
+        "editorial_decisions",
+        "model_call_logs",
+        "production_runs",
+        "construction_packets",
+        "chapter_drafts",
+        "rework_tickets",
+        "human_approval_logs",
+        "official_canon",
+        "canonized_events",
+        "ledger_update_candidates",
+        "character_states",
+        "relationship_states",
+        "foreshadowing_ledger",
+        "setting_ledger",
+        "progression_ledger",
         "style_profiles",
         "production_settings",
         "book_author_profiles",

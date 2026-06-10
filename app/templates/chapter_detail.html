@@ -2,20 +2,20 @@
 {% block title %}第 {{ plan.chapter_no }} 章 - {{ book.title }}{% endblock %}
 {% block content %}
 <section class="page-head">
-  <p class="eyebrow">章节细纲</p>
+  <p class="eyebrow">章节施工卡</p>
   <h1>第 {{ plan.chapter_no }} 章：{{ plan.title }}</h1>
-  <p class="muted">{{ plan.volume_title or "未归卷" }} / {{ plan.arc_title or "未归单元" }}。保存后自动返回上一级批次或卷纲页面。</p>
+  <p class="muted">{{ plan.volume_title or "未归卷" }} / {{ plan.arc_title or "未归单元" }}</p>
 </section>
 
 <form class="panel wide-form" method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/plan">
   <label>章节标题<input name="title" value="{{ plan.title }}" required></label>
-  <label>本章任务<textarea name="unique_task" rows="3">{{ plan.unique_task or '' }}</textarea></label>
+  <label>本章唯一任务<textarea name="unique_task" rows="3">{{ plan.unique_task or '' }}</textarea></label>
   <label>具体核心事件<textarea name="core_event" rows="3">{{ plan.core_event or '' }}</textarea></label>
   <label>推进链路<textarea name="tech_progression" rows="3">{{ plan.tech_progression or '' }}</textarea></label>
   <label>人物职能<textarea name="character_roles" rows="3">{{ plan.character_roles or '' }}</textarea></label>
   <label>对手/阻力变化<textarea name="antagonist_move" rows="3">{{ plan.antagonist_move or '' }}</textarea></label>
   <label>外部压力<textarea name="external_pressure" rows="3">{{ plan.external_pressure or '' }}</textarea></label>
-  <label>状态变化<textarea name="irreversible_change" rows="3">{{ plan.irreversible_change or '' }}</textarea></label>
+  <label>不可逆变化<textarea name="irreversible_change" rows="3">{{ plan.irreversible_change or '' }}</textarea></label>
   <label>结尾交接<textarea name="ending_hook" rows="3">{{ plan.ending_hook or '' }}</textarea></label>
   <input type="hidden" name="no_repeat_guard" value="{{ plan.no_repeat_guard or '' }}">
   <label>章节目标<textarea name="objective" rows="4">{{ plan.objective }}</textarea></label>
@@ -25,16 +25,13 @@
   <label>推进限制<textarea name="pace_limit" rows="4">{{ plan.pace_limit }}</textarea></label>
   <label>目标字数<input type="number" name="target_chars" value="{{ plan.target_chars or 2600 }}" min="800"></label>
   <div class="form-actions">
-    <button class="primary-action" type="submit">保存并返回上一级</button>
+    <button class="primary-action" type="submit">保存并返回</button>
   </div>
 </form>
 
 <section class="panel danger-zone">
   <h2>删除章节</h2>
-  <p class="muted">
-    删除会清理本章卡片、正文、草稿、审核记录和重写任务。
-    {% if body and body.status == "exported" %}本章已经导出，历史连续性记忆不会回滚；重写后需重新人工确认并导出，才会新增连续性版本。{% endif %}
-  </p>
+  <p class="muted">删除会清理未发布生产对象。已发布/导出产生的连续性版本不会被覆盖或删除，只会追加废弃事件。</p>
   <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/delete">
     <input name="confirm" placeholder="输入 DELETE 确认删除">
     <button type="submit">删除本章</button>
@@ -43,12 +40,12 @@
 
 <section class="two-col">
   <div class="panel">
-    <h2>正文状态</h2>
+    <h2>正文</h2>
     {% if body %}
     <p><strong>{{ body.status }}</strong></p>
     <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/confirm">
       <label>正文（人工可修改）<textarea name="body" rows="22">{{ body.body }}</textarea></label>
-      <button class="primary-action" type="submit">人工确认正文并返回列表</button>
+      <button class="primary-action" type="submit">人工确认正文</button>
     </form>
     {% else %}
     <p class="muted">本章尚未生成正文。</p>
@@ -57,23 +54,45 @@
     </form>
     {% endif %}
   </div>
+
   <div class="panel">
-    <h2>生产记录</h2>
+    <h2>生产状态</h2>
     {% if task %}
-    <div class="notice">重写任务：{{ task.status }}，已尝试 {{ task.attempts }} 次。</div>
+    <div class="notice">返工单：{{ task.status }} · 路由 {{ task.route }} · 已尝试 {{ task.attempts }} 次</div>
     <form method="post" action="/books/{{ book.id }}/chapters/{{ plan.chapter_no }}/rewrite">
       <button type="submit">按编辑意见重写</button>
     </form>
     {% endif %}
-    {% if artifacts %}
-      {% for artifact in artifacts %}
-      <details class="artifact">
-        <summary>{{ artifact.label }} · {{ artifact.status }}</summary>
-        <pre>{{ artifact.content }}</pre>
-      </details>
-      {% endfor %}
+
+    <h3>结构化编辑意见</h3>
+    {% for decision in decisions %}
+    <details class="artifact" open>
+      <summary>{{ decision.decision }} · {{ decision.failure_code or "通过" }} · 分数 {{ decision.score }}</summary>
+      <pre>{{ decision.evidence }}</pre>
+      <pre>{{ decision.required_fixes }}</pre>
+    </details>
     {% else %}
-      <p class="muted">暂无记录。</p>
+    <p class="muted">暂无编辑意见。</p>
+    {% endfor %}
+
+    <h3>正文草稿</h3>
+    {% for draft in drafts[:3] %}
+    <details class="artifact">
+      <summary>{{ draft.status }} · draft #{{ draft.id }}</summary>
+      <pre>{{ draft.content }}</pre>
+    </details>
+    {% else %}
+    <p class="muted">暂无草稿。</p>
+    {% endfor %}
+
+    {% if artifacts %}
+    <h3>历史归档</h3>
+    {% for artifact in artifacts %}
+    <details class="artifact">
+      <summary>{{ artifact.label }} · {{ artifact.status }}</summary>
+      <pre>{{ artifact.content }}</pre>
+    </details>
+    {% endfor %}
     {% endif %}
   </div>
 </section>

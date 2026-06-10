@@ -3,9 +3,9 @@
 {% block content %}
 <section class="page-head split-head">
   <div>
-    <p class="eyebrow">连续性工作室</p>
+    <p class="eyebrow">连续性账本</p>
     <h1>{{ book.title }}</h1>
-    <p class="muted">只信任“人工确认并导出”的正文。摘要可损，硬事实、人物状态、伏笔账本不可有损压缩。</p>
+    <p class="muted">正式连续性只接受已发布/入账正文。草稿、编辑通过稿、候选事实和旧产物不会进入写作施工包。</p>
   </div>
   <div class="head-actions">
     <a class="secondary-action" href="/books/{{ book.id }}/continuity/atoms">事实池</a>
@@ -14,46 +14,77 @@
   </div>
 </section>
 
-<section class="memory-toolbar panel">
-  <form class="inline-form" method="post" action="/books/{{ book.id }}/continuity/compress-period">
-    <select name="memory_type">
-      <option value="quarter_memory">季度记忆</option>
-      <option value="year_memory">年度记忆</option>
-    </select>
-    <button type="submit">生成周期压缩</button>
-  </form>
-  <p class="muted">默认使用 structured_budget：按硬事实、章节细纲、最近章节、单元/卷、周期记忆的优先级裁剪资料包。</p>
+<section class="two-col">
+  <div class="panel">
+    <h2>章节状态快照</h2>
+    {% for snapshot in snapshots %}
+    <article class="memory-card">
+      <div class="memory-head">
+        <strong>第 {{ snapshot.chapter_no }} 章 · v{{ snapshot.version }} · {{ snapshot.status }}</strong>
+      </div>
+      <p class="muted">来源导出：{{ snapshot.source_export_id or "-" }} · supersedes：{{ snapshot.supersedes_snapshot_id or "-" }}</p>
+      <pre>{{ snapshot.closing_state }}</pre>
+      <form method="post" action="/books/{{ book.id }}/continuity/snapshots/{{ snapshot.id }}/rollback">
+        <input name="note" placeholder="回滚说明">
+        <button type="submit">生成回滚事件</button>
+      </form>
+    </article>
+    {% else %}
+    <p class="muted">暂无已发布章节快照。</p>
+    {% endfor %}
+  </div>
+
+  <div class="panel">
+    <h2>Official Canon</h2>
+    {% for item in official_canon %}
+    <details class="artifact">
+      <summary>{{ item.canon_type }} · 第 {{ item.chapter_no or "-" }} 章 · v{{ item.version }}</summary>
+      <pre>{{ item.content }}</pre>
+    </details>
+    {% else %}
+    <p class="muted">暂无正史记录。</p>
+    {% endfor %}
+  </div>
 </section>
 
 <section class="two-col">
   <div class="panel">
-    <h2>记忆版本</h2>
-    {% if memories %}
-      {% for memory in memories %}
-      <article class="memory-card">
-        <div class="memory-head">
-          <strong>{{ memory.memory_type }} · v{{ memory.version }}</strong>
-          <a href="/books/{{ book.id }}/continuity/memories/{{ memory.id }}/edit">编辑</a>
-        </div>
-        <p class="muted">范围：{{ memory.source_start_chapter or "-" }} - {{ memory.source_end_chapter or "-" }}，模式：{{ memory.compression_mode }}</p>
-        <pre>{{ memory.content }}</pre>
-      </article>
-      {% endfor %}
+    <h2>账本更新候选</h2>
+    {% for candidate in ledger_candidates %}
+    <article class="atom-row">
+      <strong>{{ candidate.ledger_type }} · {{ candidate.status }}</strong>
+      <span>{{ candidate.subject_key }}</span>
+      <pre>{{ candidate.content }}</pre>
+    </article>
     {% else %}
-      <p class="muted">还没有导出正文写回，因此没有可用记忆。</p>
-    {% endif %}
+    <p class="muted">暂无账本候选。</p>
+    {% endfor %}
   </div>
+
   <div class="panel">
-    <h2>事实候选</h2>
+    <h2>事实池</h2>
     {% for atom in atoms[:12] %}
     <div class="atom-row">
-      <strong>{{ atom.atom_type }}</strong>
+      <strong>{{ atom.atom_type }} · {{ atom.status }}</strong>
       <span>{{ atom.content }}</span>
-      <small>{{ atom.status }}</small>
+      <small>可见章节：{{ atom.visible_after_chapter }} · 来源导出：{{ atom.source_export_id or "-" }}</small>
     </div>
     {% else %}
     <p class="muted">暂无事实候选。</p>
     {% endfor %}
   </div>
+</section>
+
+<section class="panel">
+  <h2>历史压缩记忆归档</h2>
+  <p class="muted">旧 memory 只作为历史展示；无法追溯到导出正文或未批准的内容不会进入新的 construction packet。</p>
+  {% for memory in memories[:12] %}
+  <details class="artifact">
+    <summary>{{ memory.memory_type }} · v{{ memory.version }} · {{ memory.scope_key }}</summary>
+    <pre>{{ memory.content }}</pre>
+  </details>
+  {% else %}
+  <p class="muted">暂无历史记忆。</p>
+  {% endfor %}
 </section>
 {% endblock %}

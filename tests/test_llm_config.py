@@ -76,6 +76,11 @@ class LlmConfigTests(unittest.TestCase):
             client._chat_completions_url(client.settings.llm_base_url),
         )
 
+    def test_client_uses_bounded_role_output_budgets(self):
+        client = LlmClient(self._settings_with_url("https://dashscope.aliyuncs.com/compatible-mode/v1"))
+        self.assertLess(client._max_tokens_for_role("outline"), client._max_tokens_for_role("writer"))
+        self.assertLess(client._max_tokens_for_role("editor"), client._max_tokens_for_role("writer"))
+
     def test_env_file_overrides_stale_process_values(self):
         os.environ["LLM_BASE_URL"] = "https://stale.example/v1"
         with tempfile.TemporaryDirectory() as tmpdir:

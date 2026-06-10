@@ -59,6 +59,40 @@ def json_safe(value: Any) -> Any:
     return value
 
 
+def safe_int_field(value: Any, default: int, minimum: int | None = None, maximum: int | None = None, field_name: str = "value") -> int:
+    if value is None:
+        number = default
+    else:
+        text = str(value).strip()
+        if not text:
+            number = default
+        else:
+            text = text.replace(",", "").replace("_", "")
+            multipliers = {"万": 10000, "千": 1000, "k": 1000, "K": 1000}
+            multiplier = 1
+            if text[-1:] in multipliers:
+                multiplier = multipliers[text[-1]]
+                text = text[:-1].strip()
+            try:
+                number = int(float(text) * multiplier)
+            except ValueError as exc:
+                raise ValueError(f"{field_name} must be a number.") from exc
+    if minimum is not None and number < minimum:
+        raise ValueError(f"{field_name} must be at least {minimum}.")
+    if maximum is not None and number > maximum:
+        raise ValueError(f"{field_name} must be at most {maximum}.")
+    return number
+
+
+def normalize_word_targets(target_min: Any, target_max: Any, total_words: Any) -> tuple[int, int, int]:
+    min_chars = safe_int_field(target_min, 2200, 1, 30000, "target_chars_min")
+    max_chars = safe_int_field(target_max, 3200, min_chars, 50000, "target_chars_max")
+    if max_chars < min_chars:
+        raise ValueError("target_chars_max must be greater than or equal to target_chars_min.")
+    estimated = safe_int_field(total_words, 1000000, 100000, 50000000, "estimated_total_words")
+    return min_chars, max_chars, estimated
+
+
 class Repository:
     def __init__(self, db: Database):
         self.db = db
@@ -107,20 +141,20 @@ class Repository:
         market_channel: str = "中国网文男频爽文",
         target_reader: str = "",
         pov_policy: str = "third_limited",
-        target_chars_min: int = 2200,
-        target_chars_max: int = 3200,
+        target_chars_min: Any = 2200,
+        target_chars_max: Any = 3200,
         story_mainline: str = "",
         worldbuilding: str = "",
         imported_outline: str = "",
         characters_text: str = "",
-        estimated_total_words: int = 1000000,
+        estimated_total_words: Any = 1000000,
         book_outline: str = "",
     ) -> int:
         title = title.strip() or "未命名作品"
         if self.get_book_by_title(title, statuses=("active",)):
             raise ValueError("同名正式作品已存在，请改名或先归档旧作品。")
         premise = premise.strip() or "请补充作品核心卖点。"
-        estimated_total_words = max(100000, int(estimated_total_words or 1000000))
+        target_chars_min, target_chars_max, estimated_total_words = normalize_word_targets(target_chars_min, target_chars_max, estimated_total_words)
         outline = (book_outline or imported_outline or story_mainline or premise).strip()
         with self.db.session() as conn:
             author_id = self._upsert_resource(conn, "author_profiles", DEFAULT_AUTHOR)
@@ -143,8 +177,8 @@ class Repository:
                     market_channel.strip(),
                     target_reader.strip(),
                     pov_policy.strip() or "third_limited",
-                    int(target_chars_min),
-                    int(target_chars_max),
+                    target_chars_min,
+                    target_chars_max,
                     story_mainline.strip(),
                     worldbuilding.strip(),
                     imported_outline.strip(),
@@ -175,9 +209,9 @@ class Repository:
         book_id = int(book["id"])
         if self._fetchone(conn, "SELECT id FROM volumes WHERE book_id = ? LIMIT 1", (book_id,)):
             return
-        total_words = max(100000, int(book.get("estimated_total_words") or 1000000))
-        target_min = int(book.get("target_chars_min") or 2200)
-        target_max = int(book.get("target_chars_max") or 3200)
+        total_words = safe_int_field(book.get("estimated_total_words"), 1000000, 100000, 50000000, "estimated_total_words")
+        target_min = safe_int_field(book.get("target_chars_min"), 2200, 1, 30000, "target_chars_min")
+        target_max = safe_int_field(book.get("target_chars_max"), 3200, target_min, 50000, "target_chars_max")
         avg_chapter_words = max(1200, int((target_min + target_max) / 2))
         total_chapters = max(20, math.ceil(total_words / avg_chapter_words))
         volume_count = max(1, math.ceil(total_words / 200000))
@@ -284,8 +318,8 @@ class Repository:
             (
                 book_id,
                 (book or {}).get("market_channel") or "中国网文男频爽文",
-                int((book or {}).get("target_chars_min") or 2200),
-                int((book or {}).get("target_chars_max") or 3200),
+                safe_int_field((book or {}).get("target_chars_min"), 2200, 1, 30000, "target_chars_min"),
+                safe_int_field((book or {}).get("target_chars_max"), 3200, 1, 50000, "target_chars_max"),
                 5,
                 (book or {}).get("pov_policy") or "third_limited",
                 "每章至少有一个可感知压力源和一个可兑现的小爽点；反转、打脸、奖励、惩罚轮换使用。",
@@ -347,9 +381,11 @@ class Repository:
         if not outline_locked or force_outline:
             allowed.extend(["imported_outline", "book_outline"])
         values = {key: data.get(key, current.get(key, "")) for key in allowed}
-        values["target_chars_min"] = int(values.get("target_chars_min") or 2200)
-        values["target_chars_max"] = int(values.get("target_chars_max") or 3200)
-        values["estimated_total_words"] = int(values.get("estimated_total_words") or 1000000)
+        values["target_chars_min"], values["target_chars_max"], values["estimated_total_words"] = normalize_word_targets(
+            values.get("target_chars_min"),
+            values.get("target_chars_max"),
+            values.get("estimated_total_words"),
+        )
         with self.db.session() as conn:
             assigns = ", ".join([f"{key} = ?" for key in allowed])
             self._execute(conn, f"UPDATE books SET {assigns} WHERE id = ?", (*values.values(), book_id))
@@ -359,8 +395,8 @@ class Repository:
             book_id,
             controls["style"]["rules"] if controls.get("style") else "",
             values.get("market_channel", current.get("market_channel", "")),
-            int(values["target_chars_min"]),
-            int(values["target_chars_max"]),
+            values["target_chars_min"],
+            values["target_chars_max"],
             5,
             values.get("pov_policy", current.get("pov_policy", "third_limited")),
             (controls.get("settings") or {}).get("hook_policy", "每章至少有一个压力源和一个小兑现。"),
@@ -394,7 +430,18 @@ class Repository:
             self.log_event(conn, book_id, None, "book_restored", "作品已恢复")
 
     def delete_book_permanently(self, book_id: int) -> None:
-        tables = ["volumes", "story_arcs", "chapter_batches", "chapter_plans", "style_profiles", "production_settings", "book_author_profiles", "book_editor_profiles", "characters", "relationships", "foreshadowings", "canon_facts", "visibility_rules", "artifacts", "chapter_bodies", "pipeline_runs", "rewrite_tasks", "continuity_memories", "continuity_atoms", "memory_retrieval_logs", "drift_reports", "export_records", "events"]
+        tables = [
+            "volumes", "story_arcs", "chapter_batches", "chapter_plans", "chapter_tasks",
+            "chapter_state_snapshots", "chapter_transitions", "editorial_decisions",
+            "model_call_logs", "production_runs", "construction_packets", "chapter_drafts",
+            "rework_tickets", "human_approval_logs", "official_canon", "canonized_events",
+            "ledger_update_candidates", "character_states", "relationship_states",
+            "foreshadowing_ledger", "setting_ledger", "progression_ledger",
+            "style_profiles", "production_settings", "book_author_profiles", "book_editor_profiles",
+            "characters", "relationships", "foreshadowings", "canon_facts", "visibility_rules",
+            "artifacts", "chapter_bodies", "pipeline_runs", "rewrite_tasks", "continuity_memories",
+            "continuity_atoms", "memory_retrieval_logs", "drift_reports", "export_records", "events",
+        ]
         with self.db.session() as conn:
             for table in tables:
                 self._execute(conn, f"DELETE FROM {table} WHERE book_id = ?", (book_id,))
@@ -483,7 +530,10 @@ class Repository:
     def get_production_settings(self, book_id: int) -> dict[str, Any]:
         return self.get_book_controls(book_id)["settings"]
 
-    def update_style_and_settings(self, book_id: int, style_rules: str, market_channel: str, target_chars_min: int, target_chars_max: int, chapter_unit_size: int, pov_policy: str, hook_policy: str, pacing_policy: str) -> None:
+    def update_style_and_settings(self, book_id: int, style_rules: str, market_channel: str, target_chars_min: Any, target_chars_max: Any, chapter_unit_size: Any, pov_policy: str, hook_policy: str, pacing_policy: str) -> None:
+        target_chars_min = safe_int_field(target_chars_min, 2200, 1, 30000, "target_chars_min")
+        target_chars_max = safe_int_field(target_chars_max, 3200, target_chars_min, 50000, "target_chars_max")
+        chapter_unit_size = safe_int_field(chapter_unit_size, 5, 1, 20, "chapter_unit_size")
         with self.db.session() as conn:
             self._execute(conn, "UPDATE style_profiles SET rules = ? WHERE book_id = ? AND locked = 1", (style_rules.strip(), book_id))
             ph = self.db.placeholder()
@@ -495,7 +545,7 @@ class Repository:
                 sql = f"""INSERT INTO production_settings (book_id, market_channel, target_chars_min, target_chars_max, chapter_unit_size, pov_policy, hook_policy, pacing_policy)
                     VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})
                     ON CONFLICT(book_id) DO UPDATE SET market_channel=excluded.market_channel, target_chars_min=excluded.target_chars_min, target_chars_max=excluded.target_chars_max, chapter_unit_size=excluded.chapter_unit_size, pov_policy=excluded.pov_policy, hook_policy=excluded.hook_policy, pacing_policy=excluded.pacing_policy"""
-            conn.cursor().execute(sql, (book_id, market_channel.strip(), int(target_chars_min), int(target_chars_max), int(chapter_unit_size), pov_policy.strip(), hook_policy.strip(), pacing_policy.strip()))
+            conn.cursor().execute(sql, (book_id, market_channel.strip(), target_chars_min, target_chars_max, chapter_unit_size, pov_policy.strip(), hook_policy.strip(), pacing_policy.strip()))
 
     def update_architecture(self, book_id: int, volume_title: str, volume_goal: str, arc_title: str, arc_goal: str, arc_pressure: str) -> None:
         with self.db.session() as conn:
@@ -510,9 +560,9 @@ class Repository:
     def update_volume(self, book_id: int, volume_id: int, data: dict[str, Any]) -> None:
         fields = ["title", "goal", "estimated_words", "core_conflict", "stage_payoff", "character_progression", "foreshadowing_plan", "start_chapter", "end_chapter"]
         values = [data.get(field, "") for field in fields]
-        values[2] = int(values[2] or 200000)
-        values[7] = int(values[7] or 1)
-        values[8] = int(values[8] or values[7])
+        values[2] = safe_int_field(values[2], 200000, 1000, 50000000, "estimated_words")
+        values[7] = safe_int_field(values[7], 1, 1, 100000, "start_chapter")
+        values[8] = safe_int_field(values[8], values[7], values[7], 100000, "end_chapter")
         with self.db.session() as conn:
             self._execute(conn, "UPDATE volumes SET title=?, goal=?, estimated_words=?, core_conflict=?, stage_payoff=?, character_progression=?, foreshadowing_plan=?, start_chapter=?, end_chapter=?, manual_edited=1 WHERE book_id=? AND id=?", (*values, book_id, volume_id))
             self.log_event(conn, book_id, None, "volume_updated", "卷纲已保存")
@@ -520,9 +570,9 @@ class Repository:
     def update_arc(self, book_id: int, arc_id: int, data: dict[str, Any]) -> None:
         fields = ["title", "goal", "pressure", "cause", "process", "result", "payoff", "character_change", "foreshadowing_progress", "recommended_chapters", "start_chapter", "end_chapter", "status"]
         values = [data.get(field, "") for field in fields]
-        values[9] = max(1, min(20, int(values[9] or 5)))
-        values[10] = int(values[10] or 1)
-        values[11] = int(values[11] or values[10])
+        values[9] = safe_int_field(values[9], 5, 1, 20, "recommended_chapters")
+        values[10] = safe_int_field(values[10], 1, 1, 100000, "start_chapter")
+        values[11] = safe_int_field(values[11], values[10], values[10], 100000, "end_chapter")
         values[12] = values[12] or "planned"
         with self.db.session() as conn:
             self._execute(conn, "UPDATE story_arcs SET title=?, goal=?, pressure=?, cause=?, process=?, result=?, payoff=?, character_change=?, foreshadowing_progress=?, recommended_chapters=?, start_chapter=?, end_chapter=?, status=?, manual_edited=1 WHERE book_id=? AND id=?", (*values, book_id, arc_id))
@@ -548,7 +598,7 @@ class Repository:
         with self.db.session() as conn:
             return self._fetchone(conn, "SELECT cp.*, v.title AS volume_title, a.title AS arc_title FROM chapter_plans cp LEFT JOIN volumes v ON v.id=cp.volume_id LEFT JOIN story_arcs a ON a.id=cp.arc_id WHERE cp.book_id = ? AND cp.chapter_no = ?", (book_id, chapter_no))
 
-    def update_chapter_plan(self, book_id: int, chapter_no: int, title: str, objective: str, allowed_reveals: str, forbidden_reveals: str, pace_limit: str, plot_summary: str = "", target_chars: int = 2600, unique_task: str = "", core_event: str = "", tech_progression: str = "", character_roles: str = "", antagonist_move: str = "", external_pressure: str = "", irreversible_change: str = "", ending_hook: str = "", no_repeat_guard: str = "") -> None:
+    def update_chapter_plan(self, book_id: int, chapter_no: int, title: str, objective: str, allowed_reveals: str, forbidden_reveals: str, pace_limit: str, plot_summary: str = "", target_chars: Any = 2600, unique_task: str = "", core_event: str = "", tech_progression: str = "", character_roles: str = "", antagonist_move: str = "", external_pressure: str = "", irreversible_change: str = "", ending_hook: str = "", no_repeat_guard: str = "") -> None:
         with self.db.session() as conn:
             current = self._fetchone(conn, "SELECT * FROM chapter_plans WHERE book_id = ? AND chapter_no = ?", (book_id, chapter_no)) or {}
             values = (
@@ -558,7 +608,7 @@ class Repository:
                 forbidden_reveals.strip(),
                 pace_limit.strip(),
                 plot_summary.strip(),
-                int(target_chars),
+                safe_int_field(target_chars, int(current.get("target_chars") or 2600), 1, 30000, "target_chars"),
                 (unique_task or current.get("unique_task") or "").strip(),
                 (core_event or current.get("core_event") or "").strip(),
                 (tech_progression or current.get("tech_progression") or "").strip(),
@@ -571,7 +621,7 @@ class Repository:
                 book_id,
                 chapter_no,
             )
-            self._execute(conn, """UPDATE chapter_plans SET title = ?, objective = ?, allowed_reveals = ?, forbidden_reveals = ?, pace_limit = ?, plot_summary = ?, target_chars = ?, unique_task = ?, core_event = ?, tech_progression = ?, character_roles = ?, antagonist_move = ?, external_pressure = ?, irreversible_change = ?, ending_hook = ?, no_repeat_guard = ? WHERE book_id = ? AND chapter_no = ?""", values)
+            self._execute(conn, """UPDATE chapter_plans SET title = ?, objective = ?, allowed_reveals = ?, forbidden_reveals = ?, pace_limit = ?, plot_summary = ?, target_chars = ?, unique_task = ?, core_event = ?, tech_progression = ?, character_roles = ?, antagonist_move = ?, external_pressure = ?, irreversible_change = ?, ending_hook = ?, no_repeat_guard = ?, manual_edited = 1 WHERE book_id = ? AND chapter_no = ?""", values)
             self.log_event(conn, book_id, chapter_no, "chapter_plan_updated", "章节卡片已保存")
 
     def _chapter_numbers_for_batch(self, conn: Any, book_id: int, count: int, volume_id: int | None = None, arc_id: int | None = None) -> list[int]:
@@ -614,7 +664,7 @@ class Repository:
 
     def find_reusable_chapter_slots(self, book_id: int, count: int, volume_id: int | None = None, arc_id: int | None = None) -> list[int]:
         with self.db.session() as conn:
-            return self._chapter_numbers_for_batch(conn, book_id, max(1, min(20, int(count))), volume_id, arc_id)
+            return self._chapter_numbers_for_batch(conn, book_id, safe_int_field(count, 1, 1, 20, "chapter_count"), volume_id, arc_id)
 
     def create_or_reuse_chapter_batch(self, book_id: int, chapter_count: int | None = None, volume_id: int | None = None, arc_id: int | None = None) -> int:
         with self.db.session() as conn:
@@ -634,7 +684,7 @@ class Repository:
                 raise ValueError("缺少单元纲，无法生成章节批次。")
             volume = self._fetchone(conn, "SELECT * FROM volumes WHERE id = ?", (volume_id or arc["volume_id"],))
             recommended = max(1, min(20, int(arc.get("recommended_chapters") or 5)))
-            count = max(1, min(20, int(chapter_count or recommended)))
+            count = safe_int_field(chapter_count, recommended, 1, 20, "chapter_count")
             numbers = self._chapter_numbers_for_batch(conn, book_id, count, int(volume["id"]) if volume else None, int(arc["id"]))
             start = min(numbers)
             end = max(numbers)
@@ -699,12 +749,12 @@ class Repository:
                 item = by_no.get(int(row["chapter_no"]))
                 if not item:
                     continue
-                target_chars = int(item.get("target_chars") or row.get("target_chars") or 2600)
+                target_chars = safe_int_field(item.get("target_chars") or row.get("target_chars") or 2600, row.get("target_chars") or 2600, 1, 30000, "target_chars")
                 self._execute(
                     conn,
                     """UPDATE chapter_plans SET title=?, objective=?, allowed_reveals=?, forbidden_reveals=?, pace_limit=?, plot_summary=?, target_chars=?, unique_task=?, core_event=?, tech_progression=?, character_roles=?, antagonist_move=?, external_pressure=?, irreversible_change=?, ending_hook=?, no_repeat_guard=? WHERE book_id=? AND chapter_no=?""",
                     (
-                        row["title"] if str(row.get("title") or "").strip() and "待规划" not in str(row.get("title") or "") else item.get("title", row["title"]),
+                        row["title"] if self._should_preserve_chapter_title(row) else item.get("title", row["title"]),
                         item.get("objective", ""),
                         item.get("allowed_reveals", ""),
                         item.get("forbidden_reveals", ""),
@@ -726,6 +776,9 @@ class Repository:
                 )
             self._execute(conn, "UPDATE chapter_batches SET status = ?, progress_message = ?, error = ? WHERE id = ?", ("planning", "章节卡片已由规划 Agent 生成，等待作者确认。", "", batch_id))
             self.log_event(conn, book_id, None, "chapter_batch_planned", "章节批次已完成顺序细纲规划")
+
+    def _should_preserve_chapter_title(self, row: dict[str, Any]) -> bool:
+        return int(row.get("manual_edited") or 0) == 1
 
     def _fill_missing_chapter_structure(self, conn: Any, book_id: int, chapter_no: int, structure: dict[str, str]) -> None:
         current = self._fetchone(conn, "SELECT * FROM chapter_plans WHERE book_id = ? AND chapter_no = ?", (book_id, chapter_no)) or {}
@@ -797,8 +850,15 @@ class Repository:
             body = self._fetchone(conn, "SELECT * FROM chapter_bodies WHERE book_id = ? AND chapter_no = ?", (book_id, chapter_no)) or {}
             batch_id = plan.get("batch_id")
             exported = body.get("status") == "exported"
-            for table in ["rewrite_tasks", "pipeline_runs", "artifacts", "chapter_bodies", "chapter_plans"]:
+            for table in ["rework_tickets", "chapter_drafts", "editorial_decisions", "production_runs", "construction_packets", "rewrite_tasks", "pipeline_runs", "artifacts", "chapter_bodies", "chapter_plans"]:
                 self._execute(conn, f"DELETE FROM {table} WHERE book_id = ? AND chapter_no = ?", (book_id, chapter_no))
+            if exported:
+                ph = self.db.placeholder()
+                payload = json.dumps(json_safe({"chapter_no": chapter_no, "reason": "chapter_deleted_after_export"}), ensure_ascii=False)
+                conn.cursor().execute(
+                    f"INSERT INTO canonized_events (book_id, chapter_no, event_type, source_export_id, content) VALUES ({ph},{ph},{ph},{ph},{ph})",
+                    (book_id, chapter_no, "chapter_retracted", body.get("export_id"), payload),
+                )
             last_body = self._fetchone(conn, "SELECT MAX(chapter_no) AS chapter_no FROM chapter_bodies WHERE book_id = ?", (book_id,))
             self._execute(conn, "UPDATE books SET current_chapter_no = ? WHERE id = ?", (int((last_body or {}).get("chapter_no") or 0), book_id))
             self.log_event(conn, book_id, chapter_no, "chapter_deleted", "章节已删除；已导出连续性历史不会回滚。" if exported else "章节已删除，可重新生成。")
@@ -937,10 +997,287 @@ class Repository:
             self.log_event(conn, book_id, chapter_no, "生成正文", f"run={run_id}")
             return run_id
 
-    def finish_run(self, run_id: int, book_id: int, chapter_no: int, status: str) -> None:
+    def finish_run(self, run_id: int, book_id: int, chapter_no: int, status: str, error: str = "") -> None:
         with self.db.session() as conn:
-            self._execute(conn, "UPDATE pipeline_runs SET status = ? WHERE id = ?", (status, run_id))
+            self._execute(conn, "UPDATE pipeline_runs SET status = ?, error = ? WHERE id = ?", (status, error, run_id))
             self.log_event(conn, book_id, chapter_no, "生成结束", status)
+
+    def create_production_run(self, book_id: int, chapter_no: int, run_type: str = "chapter") -> int:
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(f"INSERT INTO production_runs (book_id, chapter_no, run_type, status) VALUES ({ph},{ph},{ph},{ph})", (book_id, chapter_no, run_type, "running"))
+            run_id = self._last_id(cur)
+            self.log_event(conn, book_id, chapter_no, "production_run_started", f"run={run_id}")
+            return run_id
+
+    def finish_production_run(self, run_id: int, book_id: int, chapter_no: int, status: str, failure_code: str = "", error: str = "") -> None:
+        with self.db.session() as conn:
+            self._execute(conn, "UPDATE production_runs SET status = ?, failure_code = ?, error = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", (status, failure_code, error, run_id))
+            self.log_event(conn, book_id, chapter_no, "production_run_finished", status)
+
+    def create_construction_packet(self, book_id: int, chapter_no: int, run_id: int | None, content: dict[str, Any]) -> dict[str, Any]:
+        text = json.dumps(json_safe(content), ensure_ascii=False, indent=2)
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(f"INSERT INTO construction_packets (book_id, chapter_no, run_id, content) VALUES ({ph},{ph},{ph},{ph})", (book_id, chapter_no, run_id, text))
+            return self._fetchone(conn, "SELECT * FROM construction_packets WHERE id = ?", (self._last_id(cur),)) or {}
+
+    def get_construction_packet(self, packet_id: int) -> dict[str, Any] | None:
+        with self.db.session() as conn:
+            return self._fetchone(conn, "SELECT * FROM construction_packets WHERE id = ?", (packet_id,))
+
+    def create_chapter_draft(
+        self,
+        book_id: int,
+        chapter_no: int,
+        run_id: int | None,
+        content: str,
+        source_packet_id: int | None = None,
+        rewrite_of_draft_id: int | None = None,
+        status: str = "drafted",
+    ) -> dict[str, Any]:
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(
+                f"""INSERT INTO chapter_drafts
+                (book_id, chapter_no, run_id, source_packet_id, rewrite_of_draft_id, status, content)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, run_id, source_packet_id, rewrite_of_draft_id, status, content),
+            )
+            draft = self._fetchone(conn, "SELECT * FROM chapter_drafts WHERE id = ?", (self._last_id(cur),)) or {}
+            self.log_event(conn, book_id, chapter_no, "chapter_draft", status)
+            return draft
+
+    def get_chapter_draft(self, draft_id: int) -> dict[str, Any] | None:
+        with self.db.session() as conn:
+            return self._fetchone(conn, "SELECT * FROM chapter_drafts WHERE id = ?", (draft_id,))
+
+    def latest_chapter_draft(self, book_id: int, chapter_no: int, status: str | None = None) -> dict[str, Any] | None:
+        with self.db.session() as conn:
+            if status:
+                return self._fetchone(conn, "SELECT * FROM chapter_drafts WHERE book_id = ? AND chapter_no = ? AND status = ? ORDER BY id DESC LIMIT 1", (book_id, chapter_no, status))
+            return self._fetchone(conn, "SELECT * FROM chapter_drafts WHERE book_id = ? AND chapter_no = ? ORDER BY id DESC LIMIT 1", (book_id, chapter_no))
+
+    def list_chapter_drafts(self, book_id: int, chapter_no: int | None = None) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            return self._fetchall(conn, "SELECT * FROM chapter_drafts WHERE book_id = ? AND (? IS NULL OR chapter_no = ?) ORDER BY id DESC", (book_id, chapter_no, chapter_no))
+
+    def create_rework_ticket(self, book_id: int, chapter_no: int, run_id: int | None, editorial_decision_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        failure_codes = payload.get("failure_codes") or []
+        failure_code = ",".join(str(code) for code in failure_codes) if isinstance(failure_codes, list) else str(failure_codes or "")
+        required = payload.get("required_fixes") or payload.get("evidence") or payload.get("problems") or []
+        route = str(payload.get("route") or "writer")
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(
+                f"""INSERT INTO rework_tickets
+                (book_id, chapter_no, run_id, editorial_decision_id, route, failure_code, required_fixes, status, max_attempts)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, run_id, editorial_decision_id, route, failure_code, json.dumps(json_safe(required), ensure_ascii=False), "open", 2),
+            )
+            ticket = self._fetchone(conn, "SELECT * FROM rework_tickets WHERE id = ?", (self._last_id(cur),)) or {}
+            self.log_event(conn, book_id, chapter_no, "rework_ticket", route)
+            return ticket
+
+    def get_rework_ticket(self, book_id: int, chapter_no: int) -> dict[str, Any] | None:
+        with self.db.session() as conn:
+            return self._fetchone(conn, "SELECT * FROM rework_tickets WHERE book_id = ? AND chapter_no = ? AND status IN ('open','running') ORDER BY id DESC LIMIT 1", (book_id, chapter_no))
+
+    def list_rework_tickets(self, book_id: int, chapter_no: int | None = None) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            return self._fetchall(conn, "SELECT * FROM rework_tickets WHERE book_id = ? AND (? IS NULL OR chapter_no = ?) ORDER BY id DESC", (book_id, chapter_no, chapter_no))
+
+    def update_rework_ticket(self, ticket_id: int, status: str, attempts: int | None = None) -> None:
+        with self.db.session() as conn:
+            if attempts is None:
+                self._execute(conn, "UPDATE rework_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (status, ticket_id))
+            else:
+                self._execute(conn, "UPDATE rework_tickets SET status = ?, attempts = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (status, attempts, ticket_id))
+
+    def list_editorial_decisions(self, book_id: int, chapter_no: int | None = None) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            return self._fetchall(conn, "SELECT * FROM editorial_decisions WHERE book_id = ? AND (? IS NULL OR chapter_no = ?) ORDER BY id DESC", (book_id, chapter_no, chapter_no))
+
+    def create_ledger_candidate(
+        self,
+        book_id: int,
+        chapter_no: int | None,
+        ledger_type: str,
+        subject_key: str,
+        content: Any,
+        source_export_id: int | None = None,
+        source_snapshot_id: int | None = None,
+        supersedes_id: int | None = None,
+        status: str = "candidate",
+    ) -> dict[str, Any]:
+        text = content if isinstance(content, str) else json.dumps(json_safe(content), ensure_ascii=False, indent=2)
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(
+                f"""INSERT INTO ledger_update_candidates
+                (book_id, chapter_no, ledger_type, subject_key, content, status, source_export_id, source_snapshot_id, supersedes_id)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, ledger_type, subject_key, text, status, source_export_id, source_snapshot_id, supersedes_id),
+            )
+            return self._fetchone(conn, "SELECT * FROM ledger_update_candidates WHERE id = ?", (self._last_id(cur),)) or {}
+
+    def list_ledger_candidates(self, book_id: int, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            if status:
+                return self._fetchall(conn, "SELECT * FROM ledger_update_candidates WHERE book_id = ? AND status = ? ORDER BY id DESC LIMIT ?", (book_id, status, limit))
+            return self._fetchall(conn, "SELECT * FROM ledger_update_candidates WHERE book_id = ? ORDER BY id DESC LIMIT ?", (book_id, limit))
+
+    def list_snapshots(self, book_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            return self._fetchall(conn, "SELECT * FROM chapter_state_snapshots WHERE book_id = ? ORDER BY chapter_no DESC, version DESC LIMIT ?", (book_id, limit))
+
+    def list_official_canon(self, book_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            return self._fetchall(conn, "SELECT * FROM official_canon WHERE book_id = ? ORDER BY id DESC LIMIT ?", (book_id, limit))
+
+    def list_ledger_entries(self, book_id: int, table: str, limit: int = 100) -> list[dict[str, Any]]:
+        allowed = {"character_states", "relationship_states", "foreshadowing_ledger", "setting_ledger", "progression_ledger"}
+        if table not in allowed:
+            raise ValueError("unknown ledger table")
+        with self.db.session() as conn:
+            return self._fetchall(conn, f"SELECT * FROM {table} WHERE book_id = ? ORDER BY id DESC LIMIT ?", (book_id, limit))
+
+    def list_recent_transitions(self, book_id: int, before_chapter_no: int, limit: int = 3) -> list[dict[str, Any]]:
+        with self.db.session() as conn:
+            return self._fetchall(conn, "SELECT * FROM chapter_transitions WHERE book_id = ? AND chapter_no < ? ORDER BY chapter_no DESC LIMIT ?", (book_id, before_chapter_no, limit))
+
+    def ensure_chapter_task(self, book_id: int, chapter_no: int) -> dict[str, Any]:
+        plan = self.get_chapter_plan_row(book_id, chapter_no)
+        if not plan:
+            raise ValueError("章节任务缺少细纲，无法进入生产状态机。")
+        with self.db.session() as conn:
+            current = self._fetchone(conn, "SELECT * FROM chapter_tasks WHERE book_id = ? AND chapter_no = ? ORDER BY revision DESC LIMIT 1", (book_id, chapter_no))
+            payload = self._chapter_task_payload(plan)
+            ph = self.db.placeholder()
+            if current:
+                self._execute(
+                    conn,
+                    "UPDATE chapter_tasks SET opening_state = ?, mission = ?, definition_of_done = ?, scene_route = ?, irreversible_change = ?, handoff_to_next = ?, forbidden_future = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (payload["opening_state"], payload["mission"], payload["definition_of_done"], payload["scene_route"], payload["irreversible_change"], payload["handoff_to_next"], payload["forbidden_future"], current["id"]),
+                )
+                return self._fetchone(conn, "SELECT * FROM chapter_tasks WHERE id = ?", (current["id"],)) or current
+            cur = conn.cursor()
+            cur.execute(
+                f"""INSERT INTO chapter_tasks
+                (book_id, chapter_no, status, opening_state, mission, definition_of_done, scene_route, irreversible_change, handoff_to_next, forbidden_future, revision, source_plan_id)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, "task_ready", payload["opening_state"], payload["mission"], payload["definition_of_done"], payload["scene_route"], payload["irreversible_change"], payload["handoff_to_next"], payload["forbidden_future"], 1, plan.get("id")),
+            )
+            return self._fetchone(conn, "SELECT * FROM chapter_tasks WHERE id = ?", (self._last_id(cur),)) or {}
+
+    def _chapter_task_payload(self, plan: dict[str, Any]) -> dict[str, str]:
+        return {
+            "opening_state": str(plan.get("pace_limit") or "从上一章结尾状态直接续写。"),
+            "mission": str(plan.get("unique_task") or plan.get("objective") or ""),
+            "definition_of_done": json.dumps(
+                json_safe(
+                    [
+                        plan.get("core_event") or plan.get("plot_summary") or "",
+                        plan.get("irreversible_change") or "",
+                        plan.get("ending_hook") or "",
+                    ]
+                ),
+                ensure_ascii=False,
+            ),
+            "scene_route": str(plan.get("plot_summary") or plan.get("core_event") or ""),
+            "irreversible_change": str(plan.get("irreversible_change") or ""),
+            "handoff_to_next": str(plan.get("ending_hook") or ""),
+            "forbidden_future": str(plan.get("forbidden_reveals") or plan.get("no_repeat_guard") or ""),
+        }
+
+    def set_chapter_task_status(self, book_id: int, chapter_no: int, status: str) -> None:
+        with self.db.session() as conn:
+            self._execute(conn, "UPDATE chapter_tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE book_id = ? AND chapter_no = ?", (status, book_id, chapter_no))
+            self.log_event(conn, book_id, chapter_no, "chapter_task_status", status)
+
+    def get_active_chapter_task(self, book_id: int) -> dict[str, Any] | None:
+        with self.db.session() as conn:
+            return self._fetchone(conn, "SELECT * FROM chapter_tasks WHERE book_id = ? AND status IN ('drafting','editorial_review','rewrite_needed','editorial_passed','human_release_check') ORDER BY chapter_no LIMIT 1", (book_id,))
+
+    def assert_can_enter_drafting(self, book_id: int, chapter_no: int) -> None:
+        active = self.get_active_chapter_task(book_id)
+        if active and int(active.get("chapter_no") or 0) != int(chapter_no):
+            raise ValueError(f"当前第 {active.get('chapter_no')} 章仍在生产中，请先完成或人工处理后再生成新章节。")
+        if chapter_no <= 1:
+            return
+        previous = self.get_chapter_body(book_id, chapter_no - 1)
+        if not previous:
+            raise ValueError(f"第 {chapter_no - 1} 章尚无可承接正文，第 {chapter_no} 章不能进入正式写作。")
+
+    def assert_can_enter_drafting(self, book_id: int, chapter_no: int) -> None:
+        active = self.get_active_chapter_task(book_id)
+        if active and int(active.get("chapter_no") or 0) != int(chapter_no):
+            raise ValueError(f"active_chapter_conflict: chapter {active.get('chapter_no')} is still active.")
+        task = self.ensure_chapter_task(book_id, chapter_no)
+        if str(task.get("status") or "") not in {"task_ready", "rewrite_needed"}:
+            raise ValueError(f"task_not_ready: chapter {chapter_no} is {task.get('status')}.")
+        if chapter_no <= 1:
+            return
+        previous = self.get_chapter_body(book_id, chapter_no - 1)
+        if not previous or str(previous.get("status") or "") not in {"exported", "published", "canonized"}:
+            raise ValueError(f"previous_not_published: chapter {chapter_no - 1} must be published before chapter {chapter_no} enters drafting.")
+
+    def create_editorial_decision(
+        self,
+        book_id: int,
+        chapter_no: int,
+        decision: str,
+        review_artifact_id: int | None = None,
+        run_id: int | None = None,
+        payload: dict[str, Any] | None = None,
+        draft_id: int | None = None,
+    ) -> dict[str, Any]:
+        payload = payload or {}
+        problems = payload.get("problems") or payload.get("blocking_issues") or payload.get("notes") or []
+        codes = payload.get("failure_codes") or []
+        failure_code = "approved" if decision == "approved" else (",".join(str(code) for code in codes) if codes else self._failure_code_from_review(payload))
+        route = payload.get("route") or ("writer" if decision in {"rejected", "rewrite"} else ("human" if decision == "manual" else ""))
+        score = safe_int_field(payload.get("score"), 100 if decision == "approved" else 0, 0, 100, "score")
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(
+                f"""INSERT INTO editorial_decisions
+                (book_id, chapter_no, run_id, review_artifact_id, draft_id, decision, score, failure_code, route, evidence, required_fixes, retryable)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (
+                    book_id,
+                    chapter_no,
+                    run_id,
+                    review_artifact_id,
+                    draft_id,
+                    decision,
+                    score,
+                    failure_code,
+                    route,
+                    json.dumps(json_safe(payload.get("evidence") or problems), ensure_ascii=False),
+                    json.dumps(json_safe(payload.get("required_fixes") or payload), ensure_ascii=False),
+                    1 if decision != "approved" else 0,
+                ),
+            )
+            return self._fetchone(conn, "SELECT * FROM editorial_decisions WHERE id = ?", (self._last_id(cur),)) or {}
+
+    def _failure_code_from_review(self, payload: dict[str, Any]) -> str:
+        text = json.dumps(json_safe(payload), ensure_ascii=False)
+        if "连续性" in text or "回退" in text:
+            return "continuity_conflict"
+        if "字数" in text:
+            return "word_count"
+        if "污染" in text or "部门" in text:
+            return "meta_pollution"
+        if "纲" in text or "任务" in text:
+            return "plan_misalignment"
+        return "editorial_rewrite"
 
     def create_rewrite_task(self, book_id: int, chapter_no: int, review_artifact_id: int, error: str = "") -> dict[str, Any]:
         with self.db.session() as conn:
@@ -1028,6 +1365,144 @@ class Repository:
     def mark_exported(self, book_id: int, export_id: int) -> None:
         with self.db.session() as conn:
             self._execute(conn, "UPDATE chapter_bodies SET status = ?, export_id = ? WHERE book_id = ? AND status = ?", ("exported", export_id, book_id, "human_confirmed"))
+
+    def confirm_chapter_body(self, book_id: int, chapter_no: int, body: str | None = None) -> None:
+        current = self.get_chapter_body(book_id, chapter_no)
+        if not current:
+            raise ValueError("No chapter body can be confirmed.")
+        final_body = body if body is not None else current["body"]
+        self.save_chapter_body(book_id, chapter_no, current["title"], final_body, "human_confirmed", current.get("export_id"))
+        self.create_human_approval_log(book_id, chapter_no, "human_confirmed", final_body)
+        self.set_chapter_task_status(book_id, chapter_no, "human_release_check")
+
+    def create_human_approval_log(self, book_id: int, chapter_no: int, decision: str, body: str, note: str = "") -> dict[str, Any]:
+        import hashlib
+
+        body_hash = hashlib.sha256((body or "").encode("utf-8")).hexdigest()
+        with self.db.session() as conn:
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(f"INSERT INTO human_approval_logs (book_id, chapter_no, decision, body_hash, note) VALUES ({ph},{ph},{ph},{ph},{ph})", (book_id, chapter_no, decision, body_hash, note))
+            return self._fetchone(conn, "SELECT * FROM human_approval_logs WHERE id = ?", (self._last_id(cur),)) or {}
+
+    def mark_exported(self, book_id: int, export_id: int) -> None:
+        with self.db.session() as conn:
+            self._execute(conn, "UPDATE chapter_bodies SET status = ?, export_id = ? WHERE book_id = ? AND status = ?", ("exported", export_id, book_id, "human_confirmed"))
+        for row in [item for item in self.list_chapter_bodies(book_id, status="exported") if int(item.get("export_id") or 0) == int(export_id)]:
+            self.publish_chapter(book_id, int(row["chapter_no"]), int(export_id), row)
+
+    def publish_chapter(self, book_id: int, chapter_no: int, export_id: int, body_row: dict[str, Any] | None = None) -> None:
+        body_row = body_row or self.get_chapter_body(book_id, chapter_no)
+        if not body_row:
+            return
+        plan = self.get_chapter_plan_row(book_id, chapter_no) or {}
+        closing = str(body_row.get("body") or "")[-1200:]
+        transition = {
+            "chapter_no": chapter_no,
+            "title": body_row.get("title") or plan.get("title") or f"Chapter {chapter_no}",
+            "mission": plan.get("unique_task") or plan.get("objective") or "",
+            "irreversible_change": plan.get("irreversible_change") or "",
+            "ending_hook": plan.get("ending_hook") or "",
+        }
+        with self.db.session() as conn:
+            old_snapshot = self._fetchone(conn, "SELECT id, version FROM chapter_state_snapshots WHERE book_id = ? AND chapter_no = ? ORDER BY version DESC, id DESC LIMIT 1", (book_id, chapter_no))
+            old_transition = self._fetchone(conn, "SELECT id, version FROM chapter_transitions WHERE book_id = ? AND chapter_no = ? ORDER BY version DESC, id DESC LIMIT 1", (book_id, chapter_no))
+            old_canon = self._fetchone(conn, "SELECT id, version FROM official_canon WHERE book_id = ? AND chapter_no = ? AND canon_type = ? ORDER BY version DESC, id DESC LIMIT 1", (book_id, chapter_no, "published_chapter_transition"))
+            version = int((old_snapshot or {}).get("version") or 0) + 1
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            cur.execute(
+                f"""INSERT INTO chapter_state_snapshots
+                (book_id, chapter_no, status, opening_state, closing_state, unit_state, style_signature, source_export_id, supersedes_snapshot_id, version, snapshot_json)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (
+                    book_id,
+                    chapter_no,
+                    "published",
+                    plan.get("pace_limit") or "",
+                    closing,
+                    json.dumps(json_safe({"volume": plan.get("volume_title"), "unit": plan.get("arc_title")}), ensure_ascii=False),
+                    "",
+                    export_id,
+                    (old_snapshot or {}).get("id"),
+                    version,
+                    json.dumps(json_safe({"plan": plan, "transition": transition}), ensure_ascii=False, indent=2),
+                ),
+            )
+            snapshot_id = self._last_id(cur)
+            cur.execute(
+                f"""INSERT INTO chapter_transitions
+                (book_id, chapter_no, from_state, to_state, transition_summary, source_export_id, supersedes_transition_id, version)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, "human_release_check", "published", json.dumps(json_safe(transition), ensure_ascii=False), export_id, (old_transition or {}).get("id"), version),
+            )
+            transition_id = self._last_id(cur)
+            cur.execute(
+                f"""INSERT INTO official_canon
+                (book_id, chapter_no, canon_type, content, source_export_id, source_event_id, source_snapshot_id, supersedes_canon_id, version, status)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, "published_chapter_transition", json.dumps(json_safe(transition), ensure_ascii=False), export_id, transition_id, snapshot_id, (old_canon or {}).get("id"), version, "published"),
+            )
+            cur.execute(
+                f"""INSERT INTO canonized_events
+                (book_id, chapter_no, event_type, source_export_id, content)
+                VALUES ({ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, "chapter_published", export_id, json.dumps(json_safe({"snapshot_id": snapshot_id, "transition_id": transition_id}), ensure_ascii=False)),
+            )
+            cur.execute(
+                f"""INSERT INTO ledger_update_candidates
+                (book_id, chapter_no, ledger_type, subject_key, content, status, source_export_id, source_snapshot_id)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, "chapter_transition", f"chapter:{chapter_no}", json.dumps(json_safe(transition), ensure_ascii=False, indent=2), "candidate", export_id, snapshot_id),
+            )
+            cur.execute(
+                f"""INSERT INTO continuity_atoms
+                (book_id, chapter_no, atom_type, content, status, visible_after_chapter, source_ref, source_export_id, subject_key, confidence)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, chapter_no, "chapter_published_fact", json.dumps(json_safe(transition), ensure_ascii=False), "candidate", chapter_no, f"export:{export_id}", export_id, f"chapter:{chapter_no}", 0.78),
+            )
+            self._execute(conn, "UPDATE chapter_tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE book_id = ? AND chapter_no = ?", ("published", book_id, chapter_no))
+
+    def backfill_phase2_ledgers(self, book_id: int | None = None) -> int:
+        created = 0
+        with self.db.session() as conn:
+            if book_id:
+                bodies = self._fetchall(conn, "SELECT * FROM chapter_bodies WHERE book_id = ? AND status IN ('exported','published','canonized') ORDER BY chapter_no", (book_id,))
+            else:
+                bodies = self._fetchall(conn, "SELECT * FROM chapter_bodies WHERE status IN ('exported','published','canonized') ORDER BY book_id, chapter_no")
+        for body in bodies:
+            export_id = int(body.get("export_id") or 0)
+            if not export_id:
+                continue
+            exists = None
+            with self.db.session() as conn:
+                exists = self._fetchone(conn, "SELECT id FROM chapter_state_snapshots WHERE book_id = ? AND chapter_no = ? AND source_export_id = ? LIMIT 1", (body["book_id"], body["chapter_no"], export_id))
+            if exists:
+                continue
+            self.publish_chapter(int(body["book_id"]), int(body["chapter_no"]), export_id, body)
+            created += 1
+        return created
+
+    def rollback_snapshot(self, book_id: int, snapshot_id: int, note: str = "") -> dict[str, Any]:
+        with self.db.session() as conn:
+            snapshot = self._fetchone(conn, "SELECT * FROM chapter_state_snapshots WHERE id = ? AND book_id = ?", (snapshot_id, book_id))
+            if not snapshot:
+                raise ValueError("snapshot not found")
+            cur = conn.cursor()
+            ph = self.db.placeholder()
+            payload = {"rollback_to_snapshot_id": snapshot_id, "chapter_no": snapshot.get("chapter_no"), "note": note}
+            cur.execute(
+                f"INSERT INTO canonized_events (book_id, chapter_no, event_type, source_export_id, content) VALUES ({ph},{ph},{ph},{ph},{ph})",
+                (book_id, snapshot.get("chapter_no"), "snapshot_rollback", snapshot.get("source_export_id"), json.dumps(json_safe(payload), ensure_ascii=False)),
+            )
+            event_id = self._last_id(cur)
+            cur.execute(
+                f"""INSERT INTO ledger_update_candidates
+                (book_id, chapter_no, ledger_type, subject_key, content, status, source_export_id, source_snapshot_id)
+                VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+                (book_id, snapshot.get("chapter_no"), "rollback_marker", f"snapshot:{snapshot_id}", json.dumps(json_safe(payload), ensure_ascii=False), "candidate", snapshot.get("source_export_id"), snapshot_id),
+            )
+            return self._fetchone(conn, "SELECT * FROM canonized_events WHERE id = ?", (event_id,)) or {}
 
     def list_exports(self, book_id: int | None = None) -> list[dict[str, Any]]:
         with self.db.session() as conn:
